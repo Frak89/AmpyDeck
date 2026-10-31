@@ -215,12 +215,15 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
                 String c=dict.correction(typed,prevWord());
                 if(c!=null&&!c.equals(typed)){out=c;undoOriginal=typed;undoReplacement=c+trailing;}else undoOriginal=null;
             }else undoOriginal=null;
-            if(learn&&(out.equals(typed)||flowComposing))dict.learn(out,prevWord());
+            if(learn&&(out.equals(typed)||flowComposing))learnLater(out,prevWord());
         }
         ic.commitText(out+trailing,1);
         composing.setLength(0);noCorrectOnce=false;flowComposing=false;flowAlternates=null;
         return out;
     }
+
+    /** Learning may rebuild the word index: keep it off the UI thread. */
+    private void learnLater(String w,String prev){final Dictionary d=dict;bg.post(()->d.learn(w,prev));}
 
     private void typeLetter(String s){
         InputConnection ic=ic();if(ic==null)return;
@@ -359,13 +362,13 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
         }
         ic.commitText(s+" ",1);
         ic.endBatchEdit();
-        if(learn)dict.learn(s,prev);
+        if(learn)learnLater(s,prev);
         composing.setLength(0);flowComposing=false;flowAlternates=null;noCorrectOnce=false;undoOriginal=null;autoSpaced=true;
         afterInput();
     }
     @Override public void onForget(int slot){
         String s=kv.suggestion(slot);if(s.startsWith("\""))return;
-        dict.forget(s);Ui.toast(this,"« "+s+" » rimossa dai suggerimenti");refreshSuggestions();
+        final Dictionary d=dict;bg.post(()->{d.forget(s);ui.post(this::refreshSuggestions);});Ui.toast(this,"« "+s+" » rimossa dai suggerimenti");refreshSuggestions();
     }
 
     @Override public void onToolbar(String action){

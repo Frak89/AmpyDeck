@@ -136,6 +136,7 @@ public final class KeyboardView extends View {
         setMeasuredDimension(w,(int)(barH+areaH+bottomPad));
     }
     @Override protected void onSizeChanged(int w,int h,int ow,int oh){layoutKeys();}
+    @Override protected void onLayout(boolean changed,int l,int t,int r,int b){layoutKeys();}
 
     private void layoutKeys(){
         int W=getWidth();if(W==0)return;

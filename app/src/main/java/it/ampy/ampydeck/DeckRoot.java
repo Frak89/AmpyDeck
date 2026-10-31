@@ -38,6 +38,14 @@ public final class DeckRoot extends FrameLayout {
         reload();
     }
 
+    /** Height is the key surface's; the background just fills it (never the whole screen). */
+    @Override protected void onMeasure(int ws,int hs){
+        kv.measure(ws,MeasureSpec.makeMeasureSpec(0,MeasureSpec.UNSPECIFIED));
+        int w=MeasureSpec.getSize(ws),h=kv.getMeasuredHeight();
+        bg.measure(MeasureSpec.makeMeasureSpec(w,MeasureSpec.EXACTLY),MeasureSpec.makeMeasureSpec(h,MeasureSpec.EXACTLY));
+        setMeasuredDimension(w,h);
+    }
+
     public void reload(){
         Prefs pr=Prefs.get(getContext());th=Theme.load(getContext());mode=pr.entry();dur=Math.max(250,pr.entryMs());
         bg.reload();kv.reload();invalidate();
