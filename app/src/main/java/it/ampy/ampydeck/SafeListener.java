@@ -24,5 +24,6 @@ final class SafeListener implements KeyboardView.Listener {
     @Override public void onShiftChanged(){x("onShiftChanged",d::onShiftChanged);}
     @Override public void onClip(String t){x("onClip",()->d.onClip(t));}
     @Override public void onClearClips(){x("onClearClips",d::onClearClips);}
+    @Override public void onMove(int k,boolean sel){x("onMove",()->d.onMove(k,sel));}
     @Override public void onPageChanged(int p){x("onPageChanged",()->d.onPageChanged(p));}
 }

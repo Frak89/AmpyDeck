@@ -6,12 +6,22 @@ PKG=it.ampy.ampydeck
 APK=app/build/outputs/apk/debug/app-debug.apk
 mkdir -p ci-out
 adb install -r "$APK"
-adb shell ime enable $PKG/.AmpyDeckIME
-adb shell ime set $PKG/.AmpyDeckIME
-adb shell settings get secure default_input_method
+for t in $(seq 1 20); do
+  adb shell ime list -a -s | grep -q "$PKG" && break; sleep 2
+done
+for t in $(seq 1 10); do
+  adb shell ime enable $PKG/.AmpyDeckIME; adb shell ime set $PKG/.AmpyDeckIME
+  adb shell settings get secure default_input_method | grep -q "$PKG" && break; sleep 2
+done
+echo "default IME: $(adb shell settings get secure default_input_method)"
 adb logcat -c
 adb shell am start -n $PKG/.SettingsActivity --ez smoke true
-sleep 12
+sleep 6
+# tap the test field (first EditText) to be sure the keyboard opens
+adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+b=$(adb shell cat /sdcard/ui.xml | grep -o 'class="android.widget.EditText"[^>]*bounds="[^"]*"' | head -1 | grep -o 'bounds="[^"]*"' | grep -o '[0-9]*' | tr '\n' ' ')
+set -- $b; [ $# -ge 4 ] && adb shell input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 ))
+sleep 5
 
 keys(){ adb logcat -d -s AmpyDeckKeys:I | sed -n 's/.*AmpyDeckKeys: //p' > ci-out/keys.txt; }
 pos(){ grep -m1 -F "K $1 " ci-out/keys.txt | tail -1 | awk '{print $3" "$4}'; }
@@ -39,6 +49,11 @@ tap SYM; sleep 0.6; keys; tap "@"; tap "ABC"; sleep 0.6; keys
 tap EMOJI; sleep 0.8; keys; tap PANEL0; tap PANELABC; sleep 0.6; keys
 tap TOOLBAR; sleep 0.4; shot 06-toolbar; tap TOOLBAR
 type ok; tap "."; tap ","; shot 07-final
+# trackpad: hold ?123, drag around, select mode, back
+p=$(pos SYM); adb shell input swipe $p $p 800; sleep 0.8; keys; shot 08-trackpad
+p=$(pos PANEL0); set -- $p; adb shell input swipe $1 $(( $2+60 )) $(( $1+300 )) $(( $2+60 )) 500; sleep 0.4
+adb shell input swipe $(( $1+300 )) $(( $2+60 )) $(( $1+300 )) $(( $2-40 )) 400; sleep 0.4
+tap PANELABC; sleep 0.6; keys
 
 echo "--- text in field"; adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb shell cat /sdcard/ui.xml | grep -o 'class="android.widget.EditText"[^>]*' | grep -o 'text="[^"]*"' | head -2
 crash=$(adb shell run-as $PKG cat files/last_crash.txt 2>/dev/null)
@@ -49,4 +64,7 @@ if [ -n "$crash" ]; then echo "$crash" | head -30 | while IFS= read -r l; do ech
 if [ -n "$fatal" ]; then echo "$fatal" | while IFS= read -r l; do echo "::error::FATAL $l"; done; fail=1; fi
 grep -E "AmpyDeckCrash|ANR in $PKG" ci-out/logcat.txt | head -20 | while IFS= read -r l; do echo "::error::$l"; done
 if ! alive; then echo "::error::keyboard not shown / process gone at end"; fail=1; fi
+# swipe up from the space bar must hide the keyboard
+p=$(pos SPACE); set -- $p; adb shell input swipe $1 $2 $1 $(( $2-450 )) 250; sleep 1.2; shot 09-after-swipe-up
+if adb shell dumpsys input_method | grep -q "mInputShown=true"; then echo "::error::swipe up did not hide the keyboard"; fail=1; fi
 exit $fail

@@ -331,6 +331,20 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
         undoOriginal=null;autoSpaced=false;
     }
 
+    /** Trackpad page: arrow / home / end keys, holding shift when selection mode is on. */
+    @Override public void onMove(int keyCode,boolean select){
+        InputConnection ic=ic();if(ic==null)return;
+        if(composing.length()>0){ic.finishComposingText();composing.setLength(0);flowComposing=false;flowAlternates=null;}
+        if(select){
+            long t=SystemClock.uptimeMillis();int meta=KeyEvent.META_SHIFT_ON|KeyEvent.META_SHIFT_LEFT_ON;
+            ic.sendKeyEvent(new KeyEvent(t,t,KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_SHIFT_LEFT,0,meta));
+            ic.sendKeyEvent(new KeyEvent(t,t,KeyEvent.ACTION_DOWN,keyCode,0,meta));
+            ic.sendKeyEvent(new KeyEvent(t,t,KeyEvent.ACTION_UP,keyCode,0,meta));
+            ic.sendKeyEvent(new KeyEvent(t,t,KeyEvent.ACTION_UP,KeyEvent.KEYCODE_SHIFT_LEFT,0,0));
+        }else sendDownUpKeyEvents(keyCode);
+        undoOriginal=null;autoSpaced=false;
+    }
+
     @Override public void onFlow(List<PointF> path,Map<Character,PointF> keys,float keyW){
         final int shift=kv.shift();
         final String prev=composing.length()>0?composing.toString():prevWordForFlow();
@@ -385,6 +399,12 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
             case "bg":{int i=(Arrays.asList(Prefs.BG).indexOf(pr.background())+1)%Prefs.BG.length;pr.put("background",Prefs.BG[i]);
                 ui.postDelayed(this::applyPrefs,30);Ui.toast(this,Prefs.BG_NAMES[i]);break;}
             case "replay":root.playEntry();break;
+            case "selectall":case "copy":case "paste":{
+                InputConnection ic=ic();if(ic==null)break;
+                if(composing.length()>0){ic.finishComposingText();composing.setLength(0);flowComposing=false;}
+                ic.performContextMenuAction("copy".equals(action)?android.R.id.copy:"paste".equals(action)?android.R.id.paste:android.R.id.selectAll);
+                if("copy".equals(action))Ui.toast(this,"Copiato");
+                afterInput();break;}
         }
     }
     @Override public void onSpaceLongPress(){

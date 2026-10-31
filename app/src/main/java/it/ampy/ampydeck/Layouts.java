@@ -10,8 +10,8 @@ import java.util.List;
 public final class Layouts {
     private Layouts(){}
 
-    public static final int SHIFT=-1,ABC=-3,SYM=-2,MORE=-6,DEL=-5,ENTER=-4,EMOJI=-7,SPACE=32,NONE=0;
-    public static final int LETTERS=0,SYM1=1,SYM2=2,EMOJIS=3,CLIP=4;
+    public static final int SHIFT=-1,ABC=-3,SYM=-2,MORE=-6,DEL=-5,ENTER=-4,EMOJI=-7,PAD=-8,SPACE=32,NONE=0;
+    public static final int LETTERS=0,SYM1=1,SYM2=2,EMOJIS=3,CLIP=4,TRACKPAD=5;
 
     public static final class Key {
         public String label;public final int code;public String text;public float w;
@@ -62,15 +62,16 @@ public final class Layouts {
     private static Row bottom(boolean letters,boolean emojiKey){
         Row r=new Row();
         r.keys.add(sp(letters?"?123":"ABC",letters?SYM:ABC,1.5f));
+        if(!letters)r.keys.add(sp("⌖",PAD,1f));     // laptop-style trackpad page
         r.keys.add(ch(",",",",";",":","…","¿","¡"));
         if(emojiKey)r.keys.add(sp("☺",EMOJI,1f));
-        r.keys.add(sp("",SPACE,emojiKey?4f:5f));
+        r.keys.add(sp("",SPACE,(emojiKey?4f:5f)-(letters?0:1)));
         r.keys.add(ch(".",".","?","!","…","·","•"));
         r.keys.add(sp("⏎",ENTER,1.5f));
         // SwiftKey: long-press on period shows the punctuation sheet
         r.keys.get(r.keys.size()-2).popup=new String[]{"?","!","…","'","\"","-","(",")","/","·"};
         r.keys.get(r.keys.size()-2).hint="?!";
-        r.keys.get(1).popup=new String[]{";",":","…","¿","¡","«","»"};r.keys.get(1).hint=null;
+        for(Key k:r.keys)if(",".equals(k.text)){k.popup=new String[]{";",":","…","¿","¡","«","»"};k.hint=null;}
         return r;
     }
 

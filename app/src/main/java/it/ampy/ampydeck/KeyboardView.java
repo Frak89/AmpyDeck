@@ -31,6 +31,7 @@ public final class KeyboardView extends View {
         void onClip(String text);
         void onClearClips();
         void onPageChanged(int page);
+        void onMove(int keyCode,boolean select);
     }
 
     private static final Random R=new Random();
@@ -94,10 +95,11 @@ public final class KeyboardView extends View {
         removeCallbacks(idle);if(glitch>0)postDelayed(idle,2500);
     }
 
+    private boolean panelPage(){return page==Layouts.EMOJIS||page==Layouts.CLIP||page==Layouts.TRACKPAD;}
     // ------------------------------------------------------------------ public API
     public int page(){return page;}
     public void setPage(int pg){
-        if(pg==page)return;page=pg;panelScroll=0;buildRows();layoutKeys();invalidate();L.onPageChanged(pg);
+        if(pg==page)return;page=pg;panelScroll=0;padSelect=false;buildRows();layoutKeys();invalidate();L.onPageChanged(pg);
     }
     public int shift(){return shift;}
     public void setShift(int s){if(s!=shift){shift=s;invalidate();}}
@@ -122,7 +124,7 @@ public final class KeyboardView extends View {
 
     // ------------------------------------------------------------------ layout
     private void buildRows(){
-        int pg=(page==Layouts.EMOJIS||page==Layouts.CLIP)?Layouts.LETTERS:page;
+        int pg=panelPage()?Layouts.LETTERS:page;
         rows=Layouts.build(pg,numberRow,emojiKey);keys.clear();for(Layouts.Row r:rows)keys.addAll(r.keys);
         lockAt=new long[keys.size()];
     }
@@ -233,30 +235,41 @@ public final class KeyboardView extends View {
     }
     private void resetTouch(){
         removeCallbacks(longPress);removeCallbacks(repeatDel);
-        activeId=-1;downKey=null;longFired=flowing=cursorMode=delSwipe=panelDragging=inBar=inPanel=false;
-        popItems=null;popSel=-1;barPressed=-1;delRepeats=0;dyAcc=0;invalidate();
+        activeId=-1;downKey=null;downKeyAtDown=null;swipeHide=false;longFired=flowing=cursorMode=delSwipe=panelDragging=inBar=inPanel=false;
+        popItems=null;popSel=-1;barPressed=-1;delRepeats=0;dyAcc=0;padTouch=false;invalidate();
     }
 
     private void down(float x,float y){
         downX=lastX=x;downY=lastY=y;
         if(y<barH){inBar=true;barPressed=barSlot(x);barDownAt=SystemClock.uptimeMillis();tap(0);
             if(barPressed>=1&&barPressed<=3&&!toolbar)postDelayed(longPress,520);invalidate();return;}
-        if(page==Layouts.EMOJIS||page==Layouts.CLIP){inPanel=true;tap(0);invalidate();return;}
+        if(panelPage()){inPanel=true;tap(0);padAx=padAy=0;invalidate();return;}
         Layouts.Key k=keyAt(x,y);if(k==null)return;press(k);
     }
+    private Layouts.Key downKeyAtDown;private boolean swipeHide;
     private void press(Layouts.Key k){
-        downKey=k;tap(k.code);longFired=false;
+        downKey=k;downKeyAtDown=k;swipeHide=false;tap(k.code);longFired=false;
         if(k.code==Layouts.DEL){L.onCode(Layouts.DEL);postDelayed(repeatDel,400);}
         else if(k.code==Layouts.SPACE||(k.popup!=null&&k.popup.length>0))postDelayed(longPress,k.code==Layouts.SPACE?600:330);
+        else if(k.code==Layouts.SYM)postDelayed(longPress,450);   // hold ?123 = trackpad
         invalidate();
     }
     private void move(float x,float y){
+        float px=lastX,py=lastY;
         float dx=x-downX,dy=y-downY;lastX=x;lastY=y;
         if(inBar)return;
+        if(inPanel&&page==Layouts.TRACKPAD){padMove(x,y,x-px,y-py);return;}
         if(inPanel){if(!panelDragging&&Math.abs(dy)>Ui.dpf(8))panelDragging=true;
             if(panelDragging){panelScroll-=y-(downY+dyAcc);dyAcc=y-downY;clampScroll();invalidate();}return;}
         if(downKey==null)return;
         if(popItems!=null){popSel=popIndex(x);invalidate();return;}
+        // swipe up from the bottom row = hide the keyboard
+        if(!cursorMode&&!flowing&&rows.size()>0&&rows.get(rows.size()-1).keys.contains(downKeyAtDown)){
+            float rowH=rowBot[rows.size()-1]-rowTop[rows.size()-1];
+            boolean up=-dy>rowH*1.7f&&-dy>Math.abs(dx)*1.6f;
+            if(up!=swipeHide){swipeHide=up;removeCallbacks(longPress);invalidate();}
+            if(swipeHide||-dy>rowH*.6f&&-dy>Math.abs(dx))return;
+        }
         if(downKey.code==Layouts.SPACE){
             if(!cursorMode&&Math.abs(dx)>Ui.dpf(16)){cursorMode=true;removeCallbacks(longPress);cursorAnchor=x;}
             if(cursorMode){float step=Ui.dpf(11);
@@ -294,6 +307,7 @@ public final class KeyboardView extends View {
         if(inBar){barUp(x);dyAcc=0;return;}
         if(inPanel){if(!panelDragging)panelTap(x,y);dyAcc=0;return;}
         if(downKey==null)return;
+        if(swipeHide){L.onToolbar("hide");return;}
         if(popItems!=null){if(popSel>=0&&popSel<popItems.length){L.onText(popItems[popSel]);if(shift==1){shift=0;L.onShiftChanged();}}return;}
         if(flowing){flowPath.add(new PointF(x,y));L.onFlow(new ArrayList<>(flowPath),keyCenters(),unitW);
             if(shift==1){shift=0;}return;}
@@ -314,6 +328,7 @@ public final class KeyboardView extends View {
             case Layouts.ABC:setPage(Layouts.LETTERS);return;
             case Layouts.MORE:setPage(Layouts.SYM2);return;
             case Layouts.EMOJI:setPage(Layouts.EMOJIS);return;
+            case Layouts.PAD:setPage(Layouts.TRACKPAD);return;
             case Layouts.SPACE:case Layouts.ENTER:L.onCode(k.code);return;
             default:{
                 String t=k.text;if(t==null)return;
@@ -328,6 +343,7 @@ public final class KeyboardView extends View {
         if(inBar){if(barPressed>=1&&barPressed<=3&&!sugg[barPressed-1].isEmpty()){longFired=true;
             if(haptics)performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);L.onForget(barPressed-1);barPressed=-1;invalidate();}return;}
         Layouts.Key k=downKey;if(k==null)return;
+        if(k.code==Layouts.SYM){longFired=true;if(haptics)performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);setPage(Layouts.TRACKPAD);return;}
         if(k.code==Layouts.SPACE){longFired=true;if(haptics)performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);L.onSpaceLongPress();return;}
         if(k.popup==null||k.popup.length==0)return;
         longFired=true;if(haptics)performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
@@ -375,7 +391,26 @@ public final class KeyboardView extends View {
         int n=emojiList().length;int rowsN=(n+emojiCols()-1)/emojiCols();return rowsN*emojiCell()*.86f+Ui.dpf(8);
     }
     private void clampScroll(){float max=Math.max(0,panelContentH()-(panelBottomRowTop()-barH));panelScroll=Math.max(0,Math.min(max,panelScroll));}
-    private int bottomCells(){return page==Layouts.EMOJIS?Layouts.EMOJI_TABS.length+2:3;}
+    private int bottomCells(){return page==Layouts.EMOJIS?Layouts.EMOJI_TABS.length+2:page==Layouts.TRACKPAD?PAD_CELLS.length:3;}
+    private static final String[] PAD_CELLS={"ABC","?123","SEL","⇤","⇥","TUTTO","COPIA","INCOLLA","⌫"};
+
+    // ------------------------------------------------------------------ trackpad (laptop style)
+    private float padAx,padAy;private boolean padSelect;private boolean padTouch;
+    private void padMove(float x,float y,float ddx,float ddy){
+        if(downY>=panelBottomRowTop())return;
+        if(!panelDragging&&Math.hypot(x-downX,y-downY)>Ui.dpf(4))panelDragging=true;
+        if(!panelDragging)return;
+        padTouch=true;
+        float speed=(float)Math.hypot(ddx,ddy);float accel=speed>Ui.dpf(14)?2.2f:speed>Ui.dpf(7)?1.5f:1f;
+        padAx+=ddx*accel;padAy+=ddy*accel;
+        float sx=Ui.dpf(13),sy=Ui.dpf(24);
+        while(padAx>sx){L.onMove(android.view.KeyEvent.KEYCODE_DPAD_RIGHT,padSelect);padAx-=sx;tap(0);}
+        while(padAx<-sx){L.onMove(android.view.KeyEvent.KEYCODE_DPAD_LEFT,padSelect);padAx+=sx;tap(0);}
+        while(padAy>sy){L.onMove(android.view.KeyEvent.KEYCODE_DPAD_DOWN,padSelect);padAy-=sy;tap(0);}
+        while(padAy<-sy){L.onMove(android.view.KeyEvent.KEYCODE_DPAD_UP,padSelect);padAy+=sy;tap(0);}
+        trail.add(new float[]{x,y,SystemClock.uptimeMillis()});
+        invalidate();
+    }
 
     private void panelTap(float x,float y){
         float bt=panelBottomRowTop();
@@ -383,10 +418,23 @@ public final class KeyboardView extends View {
             int n=bottomCells();float w=getWidth()/(float)n;int i=Math.min(n-1,(int)(x/w));
             if(i==0){setPage(Layouts.LETTERS);return;}
             if(i==n-1){L.onCode(Layouts.DEL);return;}
+            if(page==Layouts.TRACKPAD){
+                switch(i){
+                    case 1:setPage(Layouts.SYM1);break;
+                    case 2:padSelect=!padSelect;invalidate();break;
+                    case 3:L.onMove(android.view.KeyEvent.KEYCODE_MOVE_HOME,padSelect);break;
+                    case 4:L.onMove(android.view.KeyEvent.KEYCODE_MOVE_END,padSelect);break;
+                    case 5:L.onToolbar("selectall");break;
+                    case 6:L.onToolbar("copy");break;
+                    case 7:L.onToolbar("paste");break;
+                }
+                return;
+            }
             if(page==Layouts.EMOJIS){emojiTab=i-1;panelScroll=0;invalidate();}
             else L.onClearClips();
             return;
         }
+        if(page==Layouts.TRACKPAD)return;
         float cy=y-barH+panelScroll;
         if(page==Layouts.CLIP){int i=(int)((cy-Ui.dpf(4))/Ui.dpf(46));if(i>=0&&i<clips.size())L.onClip(clips.get(i));return;}
         float cell=emojiCell();int col=(int)(x/cell),row=(int)((cy-Ui.dpf(4))/(cell*.86f));int i=row*emojiCols()+col;
@@ -403,12 +451,13 @@ public final class KeyboardView extends View {
     private void drawAll(Canvas c){
         long now=SystemClock.uptimeMillis();boolean anim=false;
         drawBar(c,now);
-        if(page==Layouts.EMOJIS||page==Layouts.CLIP)drawPanel(c);
+        if(panelPage())drawPanel(c);
         else{
             boolean decoding=now<decodeUntil;anim|=decoding;
             for(Layouts.Key k:keys)drawKey(c,k,now,decoding);
             if(downKey!=null&&preview&&popItems==null&&!flowing&&!cursorMode&&!downKey.special&&!longFired)drawPreview(c,downKey);
             if(popItems!=null)drawPopup(c);
+            if(swipeHide)drawHideHint(c);
         }
         if(now<glitchUntil)anim=true;
         anim|=drawTrail(c,now);
@@ -535,22 +584,40 @@ public final class KeyboardView extends View {
         }
     }
 
+    private static int lerp(int a,int b,float t){
+        t=Math.max(0,Math.min(1,t));
+        int aa=a>>>24,ar=(a>>16)&255,ag=(a>>8)&255,ab=a&255,ba=b>>>24,br=(b>>16)&255,bgc=(b>>8)&255,bb=b&255;
+        return ((int)(aa+(ba-aa)*t)<<24)|((int)(ar+(br-ar)*t)<<16)|((int)(ag+(bgc-ag)*t)<<8)|(int)(ab+(bb-ab)*t);
+    }
+    /** Comet trail: one continuous stroke, colour 1 (accent) at the head fading into colour 2 (secondary) at the tail. */
     private boolean drawTrail(Canvas c,long now){
         if(trail.isEmpty())return false;
-        long life=flowing?520:260;
+        long life=flowing?650:300;
         while(!trail.isEmpty()&&now-(long)trail.get(0)[2]>life)trail.remove(0);
-        if(!trailOn){if(!flowing)trail.clear();return flowing;}
-        p.setStyle(Paint.Style.STROKE);p.setStrokeCap(Paint.Cap.ROUND);
-        for(int i=1;i<trail.size();i++){
-            float[] a=trail.get(i-1),b=trail.get(i);float age=(now-b[2])/(float)life;float k=1-Math.max(0,Math.min(1,age));
-            int col=i%9<5?th.accent:th.secondary;
-            p.setStrokeWidth(Ui.dpf(10)*k+Ui.dpf(1));p.setColor(Theme.a(col,(int)(60*k)));c.drawLine(a[0],a[1],b[0],b[1],p);
-            p.setStrokeWidth(Ui.dpf(4)*k+Ui.dpf(.5f));p.setColor(Theme.a(col,(int)(235*k)));c.drawLine(a[0],a[1],b[0],b[1],p);
+        if(!trailOn&&page!=Layouts.TRACKPAD){if(!flowing)trail.clear();return flowing;}
+        int n=trail.size();if(n<2)return true;
+        p.setStyle(Paint.Style.STROKE);p.setStrokeCap(Paint.Cap.ROUND);p.setStrokeJoin(Paint.Join.ROUND);
+        float maxW=Ui.dpf(page==Layouts.TRACKPAD?5:7);
+        for(int pass=0;pass<2;pass++){           // pass 0 = soft glow, pass 1 = core
+            for(int i=1;i<n;i++){
+                float[] a=trail.get(i-1),b=trail.get(i);
+                float pos=i/(float)(n-1);                       // 0 = tail, 1 = head
+                float age=Math.min(1,(now-b[2])/(float)life);float fade=1-age*age;
+                int col=lerp(th.secondary,th.accent,pos);
+                float w=maxW*(.15f+.85f*pos)*fade+Ui.dpf(.6f);
+                float mx0=i>1?(trail.get(i-2)[0]+a[0])/2f:a[0],my0=i>1?(trail.get(i-2)[1]+a[1])/2f:a[1];
+                float mx1=(a[0]+b[0])/2f,my1=(a[1]+b[1])/2f;
+                tmp.reset();tmp.moveTo(mx0,my0);tmp.quadTo(a[0],a[1],mx1,my1);
+                if(i==n-1)tmp.lineTo(b[0],b[1]);
+                if(pass==0){p.setStrokeWidth(w*2.6f);p.setColor(Theme.a(col,(int)(55*fade*(.3f+.7f*pos))));}
+                else{p.setStrokeWidth(w);p.setColor(Theme.a(col,(int)(250*fade*(.25f+.75f*pos))));}
+                c.drawPath(tmp,p);
+            }
         }
-        if(flowing&&glitch>0&&R.nextInt(5)==0&&trail.size()>2){ // tiny glitch sparks along the stroke
-            float[] q=trail.get(R.nextInt(trail.size()));p.setStrokeWidth(Ui.dpf(2));p.setColor(th.secondary);
-            c.drawLine(q[0]-Ui.dpf(8),q[1],q[0]+Ui.dpf(8),q[1],p);}
-        p.setStyle(Paint.Style.FILL);p.setStrokeCap(Paint.Cap.BUTT);
+        float[] h=trail.get(n-1);p.setStyle(Paint.Style.FILL);       // bright head
+        p.setColor(Theme.a(th.accent,90));c.drawCircle(h[0],h[1],maxW*1.4f,p);
+        p.setColor(Theme.a(th.fg,230));c.drawCircle(h[0],h[1],maxW*.45f,p);
+        p.setStrokeCap(Paint.Cap.BUTT);p.setStrokeJoin(Paint.Join.MITER);
         return true;
     }
 
@@ -608,7 +675,8 @@ public final class KeyboardView extends View {
         float W=getWidth(),bt=panelBottomRowTop();
         c.save();c.clipRect(0,barH,W,bt);
         tp.setTextAlign(Paint.Align.CENTER);
-        if(page==Layouts.EMOJIS){
+        if(page==Layouts.TRACKPAD)drawPad(c,W,bt);
+        else if(page==Layouts.EMOJIS){
             String[] l=emojiList();float cell=emojiCell(),ch=cell*.86f;int cols=emojiCols();
             tp.setTypeface(Typeface.DEFAULT);tp.setTextSize(ch*.56f);tp.setColor(0xffffffff);
             if(l.length==0){tp.setTypeface(Ui.MONO);tp.setTextSize(Ui.dpf(13));tp.setColor(th.muted);
@@ -643,6 +711,7 @@ public final class KeyboardView extends View {
             String lab;int edge=th.secondary;boolean sel=false;
             if(i==0)lab="ABC";else if(i==n-1)lab="⌫";
             else if(page==Layouts.EMOJIS){lab=Layouts.EMOJI_TABS[i-1];sel=emojiTab==i-1;edge=th.accent;}
+            else if(page==Layouts.TRACKPAD){lab=PAD_CELLS[i];sel=i==2&&padSelect;edge=i==2?th.accent:th.secondary;}
             else lab="✕ SVUOTA";
             chamfer(tmp,tr,Math.min(Ui.dpf(6),tr.width()/4));
             keyBody(c,tmp,tr,edge,false,sel);
@@ -652,6 +721,40 @@ public final class KeyboardView extends View {
             tp.setColor(emoji?(sel?0xffffffff:0xaaffffff):i==0?th.secondary:th.fg);
             Paint.FontMetrics fm=tp.getFontMetrics();c.drawText(lab,tr.centerX(),tr.centerY()-(fm.ascent+fm.descent)/2f,tp);
         }
+    }
+
+    private void drawPad(Canvas c,float W,float bt){
+        tr.set(Ui.dpf(8),barH+Ui.dpf(6),W-Ui.dpf(8),bt-Ui.dpf(6));chamfer(tmp,tr,Ui.dpf(12));
+        p.setStyle(Paint.Style.FILL);p.setColor(Theme.a(th.panel,padTouch?190:150));c.drawPath(tmp,p);
+        c.save();c.clipPath(tmp);
+        p.setColor(Theme.a(th.accent,22));float g=Ui.dpf(22);
+        for(float gx=tr.left;gx<tr.right;gx+=g)c.drawRect(gx,tr.top,gx+Ui.dpf(1),tr.bottom,p);
+        for(float gy=tr.top;gy<tr.bottom;gy+=g)c.drawRect(tr.left,gy,tr.right,gy+Ui.dpf(1),p);
+        p.setColor(0x08ffffff);for(float y=tr.top;y<tr.bottom;y+=Ui.dpf(3))c.drawRect(tr.left,y,tr.right,y+Ui.dpf(1),p);
+        c.restore();
+        p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(Ui.dpf(1.2f));p.setColor(Theme.a(padSelect?th.warn:th.accent,190));c.drawPath(tmp,p);
+        p.setStrokeWidth(Ui.dpf(2.4f));float m=Ui.dpf(18);
+        p.setColor(th.accent);c.drawLine(tr.left+Ui.dpf(12),tr.top,tr.left+Ui.dpf(12)+m,tr.top,p);
+        p.setColor(th.secondary);c.drawLine(tr.right,tr.bottom-Ui.dpf(12),tr.right,tr.bottom-Ui.dpf(12)-m,p);
+        p.setStyle(Paint.Style.FILL);
+        tp.setTypeface(Ui.MONO_BOLD);tp.setTextAlign(Paint.Align.CENTER);
+        if(!padTouch){
+            tp.setTextSize(Ui.dpf(13));tp.setColor(Theme.a(th.fg,170));
+            c.drawText(padSelect?"◧ SELEZIONE ATTIVA":"⌖ TRACKPAD",tr.centerX(),tr.centerY()-Ui.dpf(4),tp);
+            tp.setTypeface(Ui.MONO);tp.setTextSize(Ui.dpf(10.5f));tp.setColor(th.muted);
+            c.drawText("trascina: ◀ ▶ lettere · ▲ ▼ righe",tr.centerX(),tr.centerY()+Ui.dpf(14),tp);
+        }else{
+            float r=Ui.dpf(16);p.setColor(Theme.a(padSelect?th.warn:th.accent,50));c.drawCircle(lastX,lastY,r*1.8f,p);
+            p.setColor(Theme.a(padSelect?th.warn:th.accent,140));c.drawCircle(lastX,lastY,r,p);
+            p.setColor(th.fg);c.drawCircle(lastX,lastY,Ui.dpf(4),p);
+        }
+    }
+    private void drawHideHint(Canvas c){
+        p.setStyle(Paint.Style.FILL);p.setColor(Theme.a(th.bg,170));c.drawRect(0,barH,getWidth(),getHeight(),p);
+        tp.setTypeface(Ui.MONO_BOLD);tp.setTextAlign(Paint.Align.CENTER);tp.setTextSize(Ui.dpf(15));
+        float cy=barH+(getHeight()-barH)/2f;
+        tp.setColor(Theme.a(th.secondary,160));c.drawText("▲ RILASCIA PER CHIUDERE",getWidth()/2f-Ui.dpf(1.5f),cy,tp);
+        tp.setColor(th.accent);c.drawText("▲ RILASCIA PER CHIUDERE",getWidth()/2f+Ui.dpf(1.5f),cy,tp);
     }
 
     @Override protected void onAttachedToWindow(){super.onAttachedToWindow();removeCallbacks(idle);if(glitch>0)postDelayed(idle,2500);}
