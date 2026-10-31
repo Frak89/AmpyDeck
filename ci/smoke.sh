@@ -4,6 +4,8 @@
 PKG=it.ampy.ampydeck
 APK=app/build/outputs/apk/debug/app-debug.apk
 mkdir -p ci-out
+adb shell settings put global hide_error_dialogs 1
+adb shell settings put global anr_show_background 0
 adb install -r "$APK"
 for t in $(seq 1 20); do
   adb shell ime list -a -s | grep -q "$PKG" && break; sleep 2
@@ -16,7 +18,8 @@ echo "default IME: $(adb shell settings get secure default_input_method)"
 # dismiss "X isn't responding" system dialogs (slow CI emulators)
 anr(){ adb shell uiautomator dump /sdcard/a.xml >/dev/null 2>&1
   w=$(adb shell cat /sdcard/a.xml | grep -o 'text="Wait"[^>]*bounds="[^"]*"' | grep -o 'bounds="[^"]*"' | grep -o '[0-9]*' | tr '\n' ' ')
-  if [ -n "$w" ]; then set -- $w; adb shell input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 )); echo "dismissed ANR dialog"; sleep 1; fi; }
+  if [ -n "$w" ]; then set -- $w; adb shell input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 )); echo "dismissed ANR dialog"; sleep 1; fi
+  adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1; }
 sleep 20; anr
 adb logcat -c
 adb shell am start -n $PKG/.SettingsActivity --ez smoke true
