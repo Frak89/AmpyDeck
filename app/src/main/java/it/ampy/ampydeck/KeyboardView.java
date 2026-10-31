@@ -277,7 +277,7 @@ public final class KeyboardView extends View {
         if(!cursorMode&&!flowing&&rows.size()>0&&rows.get(rows.size()-1).keys.contains(downKeyAtDown)){
             float rowH=rowBot[rows.size()-1]-rowTop[rows.size()-1];
             boolean up=-dy>rowH*1.7f&&-dy>Math.abs(dx)*1.6f;
-            if(up!=swipeHide){swipeHide=up;removeCallbacks(longPress);invalidate();}
+            if(up!=swipeHide){android.util.Log.i("AmpyDeckKeys","swipeHide="+up+" dy="+dy);swipeHide=up;removeCallbacks(longPress);invalidate();}
             if(swipeHide||-dy>rowH*.6f&&-dy>Math.abs(dx))return;
         }
         if(downKey.code==Layouts.SPACE){
@@ -317,7 +317,7 @@ public final class KeyboardView extends View {
         if(inBar){barUp(x);dyAcc=0;return;}
         if(inPanel){if(!panelDragging)panelTap(x,y);dyAcc=0;return;}
         if(downKey==null)return;
-        if(swipeHide){L.onToolbar("hide");return;}
+        if(swipeHide){android.util.Log.i("AmpyDeckKeys","SWIPE-UP hide");L.onToolbar("hide");return;}
         if(popItems!=null){if(popSel>=0&&popSel<popItems.length){L.onText(popItems[popSel]);if(shift==1){shift=0;L.onShiftChanged();}}return;}
         if(flowing){flowPath.add(new PointF(x,y));L.onFlow(new ArrayList<>(flowPath),keyCenters(),unitW);
             if(shift==1){shift=0;}return;}

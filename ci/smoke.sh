@@ -43,7 +43,8 @@ adb shell dumpsys window windows | grep -A3 "InputMethod" | head -20 | while IFS
 shot 01-open
 type ciao; tap ","; shot 02-comma
 tap SPACE; type kzqwx; shot 03-unknown
-tap B0; shot 04-pick-unknown
+tap B1; sleep 0.6; shot 04-pick-unknown
+alive || echo "::error::keyboard gone after tapping the unknown word"
 type grazei; tap SPACE; tap DEL; tap SPACE
 type com; tap B1; tap B1
 # long-press comma / period, then flow swipe c-i-a-o
@@ -73,5 +74,6 @@ grep -E "AmpyDeckCrash|ANR in $PKG" ci-out/logcat.txt | head -20 | while IFS= re
 if ! alive; then echo "::error::keyboard not shown / process gone at end"; fail=1; fi
 # swipe up from the space bar must hide the keyboard
 p=$(pos SPACE); set -- $p; adb shell input swipe $1 $2 $1 $(( $2-450 )) 250; sleep 1.2; shot 09-after-swipe-up
+adb logcat -d -s AmpyDeckKeys:I | grep -aE "swipe|SWIPE|requestHide" | while IFS= read -r l; do echo "::warning::$l"; done
 if adb shell dumpsys input_method | grep -q "mInputShown=true"; then echo "::error::swipe up did not hide the keyboard"; fail=1; fi
 exit $fail
