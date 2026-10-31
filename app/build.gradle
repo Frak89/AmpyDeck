@@ -1,0 +1,37 @@
+plugins {
+    id 'com.android.application'
+}
+android {
+    namespace 'it.ampy.ampydeck'
+    compileSdk 36
+    defaultConfig {
+        applicationId 'it.ampy.ampydeck'
+        minSdk 26
+        targetSdk 36
+        versionCode 1
+        versionName '1.0.0-neon-keys'
+    }
+    // Stable signing only through GitHub Actions secrets. Never commit a keystore.
+    if (System.getenv('AMPYDECK_KEYSTORE_PATH') != null) {
+        signingConfigs {
+            ampyRelease {
+                storeFile file(System.getenv('AMPYDECK_KEYSTORE_PATH'))
+                storePassword System.getenv('AMPYDECK_STORE_PASSWORD')
+                keyAlias System.getenv('AMPYDECK_KEY_ALIAS')
+                keyPassword System.getenv('AMPYDECK_KEY_PASSWORD')
+            }
+        }
+        buildTypes {
+            debug { signingConfig signingConfigs.ampyRelease }
+            release {
+                signingConfig signingConfigs.ampyRelease
+                minifyEnabled false
+                shrinkResources false
+            }
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
