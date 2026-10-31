@@ -20,8 +20,13 @@ sleep 6
 # tap the test field (first EditText) to be sure the keyboard opens
 adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
 b=$(adb shell cat /sdcard/ui.xml | grep -o 'class="android.widget.EditText"[^>]*bounds="[^"]*"' | head -1 | grep -o 'bounds="[^"]*"' | grep -o '[0-9]*' | tr '\n' ' ')
-set -- $b; [ $# -ge 4 ] && adb shell input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 ))
-sleep 5
+set -- $b
+for t in 1 2 3 4; do
+  [ $# -ge 4 ] && adb shell input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 ))
+  sleep 5
+  adb logcat -d -s AmpyDeckKeys:I | grep -q "K SPACE" && break
+  echo "keyboard not up yet, retry $t"
+done
 
 keys(){ adb logcat -d -s AmpyDeckKeys:I | sed -n 's/.*AmpyDeckKeys: //p' > ci-out/keys.txt; }
 pos(){ grep -F "K $1 " ci-out/keys.txt | tail -1 | awk '{print $3" "$4}'; }
