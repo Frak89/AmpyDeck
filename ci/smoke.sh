@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Emulator smoke test: installs AmpyDeck, makes it the active keyboard, taps real keys
 # (letters, comma, unknown word, suggestion slots, emoji, flow) and fails on any crash.
-set -u
 PKG=it.ampy.ampydeck
 APK=app/build/outputs/apk/debug/app-debug.apk
 mkdir -p ci-out
@@ -14,6 +13,11 @@ for t in $(seq 1 10); do
   adb shell settings get secure default_input_method | grep -q "$PKG" && break; sleep 2
 done
 echo "default IME: $(adb shell settings get secure default_input_method)"
+# dismiss "X isn't responding" system dialogs (slow CI emulators)
+anr(){ adb shell uiautomator dump /sdcard/a.xml >/dev/null 2>&1
+  w=$(adb shell cat /sdcard/a.xml | grep -o 'text="Wait"[^>]*bounds="[^"]*"' | grep -o 'bounds="[^"]*"' | grep -o '[0-9]*' | tr '\n' ' ')
+  if [ -n "$w" ]; then set -- $w; adb shell input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 )); echo "dismissed ANR dialog"; sleep 1; fi; }
+sleep 20; anr
 adb logcat -c
 adb shell am start -n $PKG/.SettingsActivity --ez smoke true
 sleep 6
@@ -22,6 +26,7 @@ adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
 b=$(adb shell cat /sdcard/ui.xml | grep -o 'class="android.widget.EditText"[^>]*bounds="[^"]*"' | head -1 | grep -o 'bounds="[^"]*"' | grep -o '[0-9]*' | tr '\n' ' ')
 set -- $b
 for t in 1 2 3 4; do
+  anr
   [ $# -ge 4 ] && adb shell input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 ))
   sleep 5
   adb logcat -d -s AmpyDeckKeys:I | grep -q "K SPACE" && break
@@ -37,6 +42,7 @@ shot(){ adb exec-out screencap -p > "ci-out/$1.png"; }
 alive(){ adb shell pidof $PKG:ime >/dev/null && adb shell dumpsys input_method | grep -q "mInputShown=true"; }
 
 sleep 4; keys; sleep 1; keys
+grep -q "K SPACE" ci-out/keys.txt || { echo "::error::keyboard never opened"; adb exec-out screencap -p > ci-out/00-noopen.png; exit 1; }
 grep -a FIT ci-out/keys.txt | while IFS= read -r l; do echo "::warning::$l"; done
 grep GEOM ci-out/keys.txt | tail -2 | while IFS= read -r l; do echo "::warning::$l"; done
 adb shell dumpsys window windows | grep -A3 "InputMethod" | head -20 | while IFS= read -r l; do echo "::warning::WIN $l"; done
