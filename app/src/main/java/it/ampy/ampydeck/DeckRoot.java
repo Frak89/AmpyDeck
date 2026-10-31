@@ -35,13 +35,31 @@ public final class DeckRoot extends FrameLayout {
         red.setColorFilter(new ColorMatrixColorFilter(new float[]{1,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0, 0,0,0,.75f,0}));
         cyan.setColorFilter(new ColorMatrixColorFilter(new float[]{0,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,.75f,0}));
         ep.setStyle(Paint.Style.STROKE);
+        watchInsets();
         reload();
     }
 
-    /** Height is the key surface's; the background just fills it (never the whole screen). */
+    private int navPad;
+    /**
+     * Apps targeting Android 15+ get an edge-to-edge IME window: without this the bottom key row
+     * sits under the system navigation bar (its "v" hide button steals taps on ?123 / , / ☺).
+     * Keys are lifted above the bar; the animated background still fills the bar area.
+     */
+    private void watchInsets(){
+        setOnApplyWindowInsetsListener((v,ins)->{
+            int b;
+            if(android.os.Build.VERSION.SDK_INT>=30)b=Math.max(ins.getInsets(android.view.WindowInsets.Type.navigationBars()).bottom,
+                ins.getInsets(android.view.WindowInsets.Type.tappableElement()).bottom);
+            else b=ins.getSystemWindowInsetBottom();
+            if(b!=navPad){navPad=b;requestLayout();}
+            return ins;
+        });
+    }
+
+    /** Height is the key surface's (+ nav bar); the background just fills it (never the whole screen). */
     @Override protected void onMeasure(int ws,int hs){
         kv.measure(ws,MeasureSpec.makeMeasureSpec(0,MeasureSpec.UNSPECIFIED));
-        int w=MeasureSpec.getSize(ws),h=kv.getMeasuredHeight();
+        int w=MeasureSpec.getSize(ws),h=kv.getMeasuredHeight()+navPad;
         bg.measure(MeasureSpec.makeMeasureSpec(w,MeasureSpec.EXACTLY),MeasureSpec.makeMeasureSpec(h,MeasureSpec.EXACTLY));
         setMeasuredDimension(w,h);
     }

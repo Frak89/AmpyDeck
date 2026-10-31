@@ -24,7 +24,7 @@ set -- $b; [ $# -ge 4 ] && adb shell input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 ))
 sleep 5
 
 keys(){ adb logcat -d -s AmpyDeckKeys:I | sed -n 's/.*AmpyDeckKeys: //p' > ci-out/keys.txt; }
-pos(){ grep -m1 -F "K $1 " ci-out/keys.txt | tail -1 | awk '{print $3" "$4}'; }
+pos(){ grep -F "K $1 " ci-out/keys.txt | tail -1 | awk '{print $3" "$4}'; }
 tap(){ local p; p=$(pos "$1"); if [ -z "$p" ]; then echo "::warning::key '$1' not found"; return; fi
        adb shell input tap $p; sleep 0.35; }
 type(){ for ch in $(echo "$1" | sed 's/./& /g'); do tap "$ch"; done; }
