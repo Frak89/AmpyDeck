@@ -3,9 +3,21 @@ package it.ampy.ampydeck;
 import android.content.Context;
 import android.content.SharedPreferences;
 
-/** Every user-tunable switch of AmpyDeck lives here (same keys as AmpyRocket where shared). */
+import org.json.JSONObject;
+
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+
+/**
+ * Every user-tunable switch of AmpyDeck. The keyboard runs in its own process (":ime"), so
+ * settings live in a small JSON file both processes re-read when it changes (a revision
+ * counter tells the keyboard to re-theme itself).
+ */
 public final class Prefs {
-    public static final String FILE="ampydeck_settings";
+    public static final String FILE="ampydeck_prefs.json";
 
     // Animated backgrounds (same engine as AmpyRocket)
     public static final String[] BG={"grid","rain","particles","hex","starfield","plain"};
@@ -21,23 +33,59 @@ public final class Prefs {
     public static final String[] KEY_STYLE={"neon","glass","outline","flat"};
     public static final String[] KEY_STYLE_NAMES={"PANNELLO NEON (AmpyLink)","VETRO","SOLO CONTORNO","PIATTO"};
 
-    private final SharedPreferences sp;
-    private Prefs(Context c){sp=c.getApplicationContext().getSharedPreferences(FILE,Context.MODE_PRIVATE);}
-    public static Prefs get(Context c){return new Prefs(c);}
-    public SharedPreferences raw(){return sp;}
+    private static final Object LOCK=new Object();
+    private static HashMap<String,Object> cache;private static long cacheMtime=-1,cacheLen=-1;
+    private final File file;
 
-    public String s(String k,String d){return sp.getString(k,d);}
-    public int i(String k,int d){return sp.getInt(k,d);}
-    public boolean b(String k,boolean d){return sp.getBoolean(k,d);}
-    public float f(String k,float d){return sp.getFloat(k,d);}
-    public void put(String k,Object v){
-        SharedPreferences.Editor e=sp.edit();
-        if(v instanceof Boolean)e.putBoolean(k,(Boolean)v);
-        else if(v instanceof Integer)e.putInt(k,(Integer)v);
-        else if(v instanceof Float)e.putFloat(k,(Float)v);
-        else e.putString(k,v==null?null:String.valueOf(v));
-        e.apply();
+    private Prefs(Context c){file=new File(c.getApplicationContext().getFilesDir(),FILE);load(c.getApplicationContext());}
+    public static Prefs get(Context c){return new Prefs(c);}
+
+    private void load(Context c){
+        synchronized(LOCK){
+            if(!file.exists()){
+                if(cache==null){cache=new HashMap<>();
+                    // one-time migration from the first release (SharedPreferences)
+                    try{SharedPreferences old=c.getSharedPreferences("ampydeck_settings",Context.MODE_PRIVATE);
+                        for(Map.Entry<String,?> e:old.getAll().entrySet())if(e.getValue()!=null)cache.put(e.getKey(),e.getValue());
+                        if(!cache.isEmpty())write();}catch(Throwable ignored){}}
+                return;
+            }
+            long m=file.lastModified(),l=file.length();
+            if(cache!=null&&m==cacheMtime&&l==cacheLen)return;
+            HashMap<String,Object> map=new HashMap<>();
+            try(InputStream in=new FileInputStream(file)){
+                ByteArrayOutputStream bo=new ByteArrayOutputStream();byte[] b=new byte[4096];int n;while((n=in.read(b))>0)bo.write(b,0,n);
+                JSONObject o=new JSONObject(bo.toString("UTF-8"));
+                for(Iterator<String> it=o.keys();it.hasNext();){String k=it.next();map.put(k,o.get(k));}
+                cache=map;cacheMtime=m;cacheLen=l;
+            }catch(Throwable t){if(cache==null)cache=new HashMap<>();}
+        }
     }
+    private void write(){
+        try{
+            JSONObject o=new JSONObject();for(Map.Entry<String,Object> e:cache.entrySet())o.put(e.getKey(),e.getValue());
+            File tmp=new File(file.getPath()+".tmp");
+            try(OutputStream os=new FileOutputStream(tmp)){os.write(o.toString().getBytes(StandardCharsets.UTF_8));}
+            if(!tmp.renameTo(file)){try(OutputStream os=new FileOutputStream(file)){os.write(o.toString().getBytes(StandardCharsets.UTF_8));}}
+            cacheMtime=file.lastModified();cacheLen=file.length();
+        }catch(Throwable ignored){}
+    }
+
+    private Object v(String k){synchronized(LOCK){return cache==null?null:cache.get(k);}}
+    public String s(String k,String d){Object o=v(k);return o==null||o==JSONObject.NULL?d:String.valueOf(o);}
+    public int i(String k,int d){Object o=v(k);return o instanceof Number?((Number)o).intValue():d;}
+    public boolean b(String k,boolean d){Object o=v(k);return o instanceof Boolean?(Boolean)o:d;}
+    public float f(String k,float d){Object o=v(k);return o instanceof Number?((Number)o).floatValue():d;}
+    public void put(String k,Object val){
+        synchronized(LOCK){
+            if(cache==null)cache=new HashMap<>();
+            if(val==null)cache.remove(k);else cache.put(k,val instanceof Float?(double)(Float)val:val);
+            if(!"emoji_recent".equals(k))cache.put("_rev",i("_rev",0)+1);
+            write();
+        }
+    }
+    /** Changes whenever a setting (other than emoji recents) changes, from any process. */
+    public int rev(){return i("_rev",0);}
 
     public String theme(){return s("theme","cyberpunk");}
     public String background(){return s("background","grid");}

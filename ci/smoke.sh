@@ -34,7 +34,7 @@ tap(){ local p; p=$(pos "$1"); if [ -z "$p" ]; then echo "::warning::key '$1' no
        adb shell input tap $p; sleep 0.35; }
 type(){ for ch in $(echo "$1" | sed 's/./& /g'); do tap "$ch"; done; }
 shot(){ adb exec-out screencap -p > "ci-out/$1.png"; }
-alive(){ adb shell pidof $PKG >/dev/null && adb shell dumpsys input_method | grep -q "mInputShown=true"; }
+alive(){ adb shell pidof $PKG:ime >/dev/null && adb shell dumpsys input_method | grep -q "mInputShown=true"; }
 
 sleep 4; keys; sleep 1; keys
 grep -a FIT ci-out/keys.txt | while IFS= read -r l; do echo "::warning::$l"; done
@@ -65,6 +65,7 @@ tap PANELABC; sleep 0.6; keys
 
 echo "--- text in field"; adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb shell cat /sdcard/ui.xml | grep -o 'class="android.widget.EditText"[^>]*' | grep -o 'text="[^"]*"' | head -2
 crash=$(adb shell run-as $PKG cat files/last_crash.txt 2>/dev/null)
+adb shell pidof $PKG:ime >/dev/null || echo "::warning::ime process not running"
 adb logcat -d > ci-out/logcat.txt
 fatal=$(grep -A25 "FATAL EXCEPTION" ci-out/logcat.txt | grep -B2 -A25 "$PKG" | head -40)
 fail=0

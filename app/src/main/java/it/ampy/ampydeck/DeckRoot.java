@@ -38,7 +38,7 @@ public final class DeckRoot extends FrameLayout {
         reload();
     }
 
-    private int navPad;
+    private int navPad,lastOver;
     /**
      * Apps targeting Android 15+ can get the IME window pushed down by the navigation-bar height:
      * the bottom key row then sits under the system bar (its "v" hide button steals taps on
@@ -58,14 +58,15 @@ public final class DeckRoot extends FrameLayout {
                     wi.getInsets(android.view.WindowInsets.Type.tappableElement()).bottom);
             }else{android.util.DisplayMetrics dm=new android.util.DisplayMetrics();wm.getDefaultDisplay().getRealMetrics(dm);screenH=dm.heightPixels;
                 android.view.WindowInsets wi=getRootWindowInsets();if(wi!=null)nav=wi.getStableInsetBottom();}
-            int limit=screenH-nav;int np=navPad;
-            if(kvBottom>limit+2)np=navPad+(kvBottom-limit);
-            else if(kvBottom<limit-2&&navPad>0)np=Math.max(0,navPad-(limit-kvBottom));
+            int limit=screenH-nav;int over=kvBottom-limit;int np=navPad;
+            // act only on an overlap that is still there after the show animation (same value twice)
+            if(over>2&&over==lastOver)np=navPad+over;
+            lastOver=over;
             android.util.Log.i("AmpyDeckKeys","FIT kvBottom="+kvBottom+" limit="+limit+" nav="+nav+" navPad="+navPad+"->"+np);
-            if(np!=navPad){navPad=np;requestLayout();}
+            if(np!=navPad){navPad=np;lastOver=0;requestLayout();}
         }catch(Throwable t){CrashLog.log("checkFit",t);}
     }
-    public void scheduleFit(){removeCallbacks(fit);postDelayed(fit,450);postDelayed(fit2,1300);postDelayed(fit3,2600);}
+    public void scheduleFit(){lastOver=0;removeCallbacks(fit);removeCallbacks(fit2);removeCallbacks(fit3);postDelayed(fit,1200);postDelayed(fit2,2000);postDelayed(fit3,3200);}
     private final Runnable fit=this::checkFit,fit2=this::checkFit,fit3=this::checkFit;
 
     /** Height is the key surface's (+ nav bar); the background just fills it (never the whole screen). */

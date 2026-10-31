@@ -4,7 +4,6 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.graphics.PointF;
 import android.inputmethodservice.InputMethodService;
 import android.os.Build;
@@ -28,7 +27,7 @@ import java.util.*;
  * autocorrect on space with backspace-undo, learning, flow typing, smart punctuation,
  * double-space period, auto-capitalisation, clipboard history) on the neon AmpyDeck surface.
  */
-public final class AmpyDeckIME extends InputMethodService implements KeyboardView.Listener,SharedPreferences.OnSharedPreferenceChangeListener {
+public final class AmpyDeckIME extends InputMethodService implements KeyboardView.Listener {
     private DeckRoot root;private KeyboardView kv;private Prefs pr;private Dictionary dict;
     private final StringBuilder composing=new StringBuilder();
     private boolean predict=true,learn=true,autoCaps=true,autocorrect=true;
@@ -56,20 +55,23 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
     };
 
     @Override public void onCreate(){
-        super.onCreate();CrashLog.install(this);pr=Prefs.get(this);pr.raw().registerOnSharedPreferenceChangeListener(this);
+        super.onCreate();CrashLog.install(this);pr=Prefs.get(this);lastRev=pr.rev();lastDictReset=pr.i("dict_reset",0);
         dict=Dictionary.get(this);
         worker=new HandlerThread("ampydeck-predict");worker.start();bg=new Handler(worker.getLooper());
         cm=(ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);
         if(cm!=null)cm.addPrimaryClipChangedListener(clipListener);
     }
     @Override public void onDestroy(){
-        pr.raw().unregisterOnSharedPreferenceChangeListener(this);
         if(cm!=null)cm.removePrimaryClipChangedListener(clipListener);
         dict.save();worker.quitSafely();super.onDestroy();
     }
-    @Override public void onSharedPreferenceChanged(SharedPreferences sp,String key){
-        if("emoji_recent".equals(key))return;prefsDirty=true;
-        if(root!=null&&root.isShown())ui.post(this::applyPrefs);
+    private int lastRev,lastDictReset;
+    /** Settings are edited in another process: pick up changes when the keyboard (re)appears. */
+    private void syncPrefs(){
+        pr=Prefs.get(this);
+        if(pr.rev()!=lastRev){lastRev=pr.rev();prefsDirty=true;}
+        int dr=pr.i("dict_reset",0);if(dr!=lastDictReset){lastDictReset=dr;Dictionary.drop();prefsDirty=true;}
+        applyPrefs();
     }
     private void applyPrefs(){
         if(!prefsDirty)return;prefsDirty=false;
@@ -87,7 +89,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
         try{startView(info,restarting);}catch(Throwable t){CrashLog.log("startInputView",t);}
     }
     private void startView(EditorInfo info,boolean restarting){
-        if(prefsDirty)applyPrefs();
+        syncPrefs();
         dict=Dictionary.get(this);
         composing.setLength(0);autoSpaced=false;flowComposing=false;undoOriginal=null;noCorrectOnce=false;flowAlternates=null;
         int cls=info.inputType&InputType.TYPE_MASK_CLASS,var=info.inputType&InputType.TYPE_MASK_VARIATION;
@@ -395,9 +397,9 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
             case "emoji":kv.setPage(Layouts.EMOJIS);break;
             case "clip":kv.setPage(Layouts.CLIP);break;
             case "theme":{int i=(Arrays.asList(Theme.KEYS).indexOf(pr.theme())+1)%Theme.KEYS.length;pr.put("theme",Theme.KEYS[i]);
-                ui.postDelayed(this::applyPrefs,30);Ui.toast(this,Theme.NAMES[i]);break;}
+                syncPrefs();Ui.toast(this,Theme.NAMES[i]);break;}
             case "bg":{int i=(Arrays.asList(Prefs.BG).indexOf(pr.background())+1)%Prefs.BG.length;pr.put("background",Prefs.BG[i]);
-                ui.postDelayed(this::applyPrefs,30);Ui.toast(this,Prefs.BG_NAMES[i]);break;}
+                syncPrefs();Ui.toast(this,Prefs.BG_NAMES[i]);break;}
             case "replay":root.playEntry();break;
             case "selectall":case "copy":case "paste":{
                 InputConnection ic=ic();if(ic==null)break;

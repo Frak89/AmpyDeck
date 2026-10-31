@@ -85,7 +85,7 @@ public final class SettingsActivity extends Activity {
         Dictionary d=Dictionary.get(this);
         item("Parole imparate: "+d.learntCount(),"Tieni premuto un suggerimento nella barra per rimuoverlo.",()->{});
         item("Cancella parole e abitudini imparate","Azzera dizionario personale e coppie di parole.",()->{
-            Dictionary.clearLearnt(this);Ui.toast(this,"Dizionario personale azzerato");build();});
+            Dictionary.clearLearnt(this);pr.put("dict_reset",pr.i("dict_reset",0)+1);Ui.toast(this,"Dizionario personale azzerato");build();});
 
         section("05 / GESTI RAPIDI");
         item("Barra spaziatrice","Scorri a destra/sinistra: muovi il cursore. Tieni premuto: cambia tastiera.",()->{});

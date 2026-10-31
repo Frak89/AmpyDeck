@@ -33,6 +33,8 @@ public final class Dictionary {
         return inst;
     }
     public static synchronized void reset(){if(inst!=null)inst.save();inst=null;}
+    /** Forgets the in-memory copy without saving (files were wiped by Settings). */
+    public static synchronized void drop(){inst=null;}
 
     private Dictionary(Context c,String lang){
         this.lang=lang;
