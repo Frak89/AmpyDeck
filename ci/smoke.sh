@@ -32,7 +32,8 @@ shot(){ adb exec-out screencap -p > "ci-out/$1.png"; }
 alive(){ adb shell pidof $PKG >/dev/null && adb shell dumpsys input_method | grep -q "mInputShown=true"; }
 
 keys; sleep 1; keys
-head -5 ci-out/keys.txt
+grep GEOM ci-out/keys.txt | tail -2 | while IFS= read -r l; do echo "::warning::$l"; done
+adb shell dumpsys window windows | grep -A3 "InputMethod" | head -20 | while IFS= read -r l; do echo "::warning::WIN $l"; done
 shot 01-open
 type ciao; tap ","; shot 02-comma
 tap SPACE; type kzqwx; shot 03-unknown

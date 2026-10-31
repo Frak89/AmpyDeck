@@ -160,6 +160,16 @@ public final class KeyboardView extends View {
     private final Runnable logKeys=()->{
         if(!isAttachedToWindow())return;int[] o=new int[2];getLocationOnScreen(o);
         StringBuilder b=new StringBuilder("PAGE ").append(page).append('\n');
+        {android.view.WindowInsets wi=getRootWindowInsets();View rv=getRootView();int[] ro=new int[2];rv.getLocationOnScreen(ro);
+         android.graphics.Rect vis=new android.graphics.Rect();getGlobalVisibleRect(vis);
+         b.append("GEOM kvY=").append(o[1]).append(" kvH=").append(getHeight()).append(" parentH=").append(((View)getParent()).getHeight())
+          .append(" rootY=").append(ro[1]).append(" rootH=").append(rv.getHeight()).append(" vis=").append(vis.toShortString())
+          .append(" screenH=").append(getResources().getDisplayMetrics().heightPixels)
+          .append(" nav=").append(wi==null?"null":android.os.Build.VERSION.SDK_INT>=30?String.valueOf(wi.getInsets(android.view.WindowInsets.Type.navigationBars())):"?")
+          .append(" chain=");
+         View v=this;while(v!=null){b.append(v.getClass().getSimpleName()).append('@').append((int)v.getY()).append('/').append(v.getHeight()).append('>');
+             v=v.getParent() instanceof View?(View)v.getParent():null;}
+         b.append('\n');}
         for(Layouts.Key k:keys){String id=k.code==Layouts.NONE?k.text:k.code==Layouts.SPACE?"SPACE":k.code==Layouts.DEL?"DEL":k.code==Layouts.ENTER?"ENTER":
             k.code==Layouts.SHIFT?"SHIFT":k.code==Layouts.SYM?"SYM":k.code==Layouts.ABC?"ABC":k.code==Layouts.MORE?"MORE":k.code==Layouts.EMOJI?"EMOJI":"?";
             b.append("K ").append(id).append(' ').append((int)(o[0]+k.r.centerX())).append(' ').append((int)(o[1]+k.r.centerY())).append('\n');}
