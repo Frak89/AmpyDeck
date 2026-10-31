@@ -36,7 +36,8 @@ type(){ for ch in $(echo "$1" | sed 's/./& /g'); do tap "$ch"; done; }
 shot(){ adb exec-out screencap -p > "ci-out/$1.png"; }
 alive(){ adb shell pidof $PKG >/dev/null && adb shell dumpsys input_method | grep -q "mInputShown=true"; }
 
-keys; sleep 1; keys
+sleep 4; keys; sleep 1; keys
+grep -a FIT ci-out/keys.txt | while IFS= read -r l; do echo "::warning::$l"; done
 grep GEOM ci-out/keys.txt | tail -2 | while IFS= read -r l; do echo "::warning::$l"; done
 adb shell dumpsys window windows | grep -A3 "InputMethod" | head -20 | while IFS= read -r l; do echo "::warning::WIN $l"; done
 shot 01-open

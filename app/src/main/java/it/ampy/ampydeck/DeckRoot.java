@@ -35,26 +35,38 @@ public final class DeckRoot extends FrameLayout {
         red.setColorFilter(new ColorMatrixColorFilter(new float[]{1,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0, 0,0,0,.75f,0}));
         cyan.setColorFilter(new ColorMatrixColorFilter(new float[]{0,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,.75f,0}));
         ep.setStyle(Paint.Style.STROKE);
-        watchInsets();
         reload();
     }
 
     private int navPad;
     /**
-     * Apps targeting Android 15+ get an edge-to-edge IME window: without this the bottom key row
-     * sits under the system navigation bar (its "v" hide button steals taps on ?123 / , / ☺).
-     * Keys are lifted above the bar; the animated background still fills the bar area.
+     * Apps targeting Android 15+ can get the IME window pushed down by the navigation-bar height:
+     * the bottom key row then sits under the system bar (its "v" hide button steals taps on
+     * ?123 / , / ☺). After the window settles we measure where the keys really end and lift
+     * them above the bar by exactly the overlap; devices without the issue are left untouched.
      */
-    private void watchInsets(){
-        setOnApplyWindowInsetsListener((v,ins)->{
-            int b;
-            if(android.os.Build.VERSION.SDK_INT>=30)b=Math.max(ins.getInsets(android.view.WindowInsets.Type.navigationBars()).bottom,
-                ins.getInsets(android.view.WindowInsets.Type.tappableElement()).bottom);
-            else b=ins.getSystemWindowInsetBottom();
-            if(b!=navPad){navPad=b;requestLayout();}
-            return ins;
-        });
+    public void checkFit(){
+        try{
+            if(!isAttachedToWindow()||kv.getHeight()==0)return;
+            int[] o=new int[2];kv.getLocationOnScreen(o);int kvBottom=o[1]+kv.getHeight();
+            int screenH,nav=0;
+            android.view.WindowManager wm=(android.view.WindowManager)getContext().getSystemService(Context.WINDOW_SERVICE);
+            if(android.os.Build.VERSION.SDK_INT>=30){
+                screenH=wm.getCurrentWindowMetrics().getBounds().height();
+                android.view.WindowInsets wi=getRootWindowInsets();
+                if(wi!=null)nav=Math.max(wi.getInsets(android.view.WindowInsets.Type.navigationBars()).bottom,
+                    wi.getInsets(android.view.WindowInsets.Type.tappableElement()).bottom);
+            }else{android.util.DisplayMetrics dm=new android.util.DisplayMetrics();wm.getDefaultDisplay().getRealMetrics(dm);screenH=dm.heightPixels;
+                android.view.WindowInsets wi=getRootWindowInsets();if(wi!=null)nav=wi.getStableInsetBottom();}
+            int limit=screenH-nav;int np=navPad;
+            if(kvBottom>limit+2)np=navPad+(kvBottom-limit);
+            else if(kvBottom<limit-2&&navPad>0)np=Math.max(0,navPad-(limit-kvBottom));
+            android.util.Log.i("AmpyDeckKeys","FIT kvBottom="+kvBottom+" limit="+limit+" nav="+nav+" navPad="+navPad+"->"+np);
+            if(np!=navPad){navPad=np;requestLayout();}
+        }catch(Throwable t){CrashLog.log("checkFit",t);}
     }
+    public void scheduleFit(){removeCallbacks(fit);postDelayed(fit,450);postDelayed(fit2,1300);postDelayed(fit3,2600);}
+    private final Runnable fit=this::checkFit,fit2=this::checkFit,fit3=this::checkFit;
 
     /** Height is the key surface's (+ nav bar); the background just fills it (never the whole screen). */
     @Override protected void onMeasure(int ws,int hs){

@@ -116,7 +116,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
         updateWindowColors();
         refreshSuggestions();
     }
-    @Override public void onWindowShown(){super.onWindowShown();try{if(root!=null){root.setRunning(true);root.playEntry();}}catch(Throwable t){CrashLog.log("windowShown",t);}}
+    @Override public void onWindowShown(){super.onWindowShown();try{if(root!=null){root.setRunning(true);root.playEntry();root.scheduleFit();}}catch(Throwable t){CrashLog.log("windowShown",t);}}
     @Override public void onWindowHidden(){super.onWindowHidden();if(root!=null)root.setRunning(false);dict.save();}
     @Override public void onFinishInputView(boolean finishing){
         super.onFinishInputView(finishing);
