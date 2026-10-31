@@ -83,7 +83,11 @@ if [ -n "$fatal" ]; then echo "$fatal" | while IFS= read -r l; do echo "::error:
 grep -E "AmpyDeckCrash|ANR in $PKG" ci-out/logcat.txt | head -20 | while IFS= read -r l; do echo "::error::$l"; done
 if ! alive; then echo "::error::keyboard not shown / process gone at end"; fail=1; fi
 # swipe up from the space bar must hide the keyboard
-p=$(pos SPACE); set -- $p; adb shell input swipe $1 $2 $1 $(( $2-450 )) 250; sleep 1.2; shot 09-after-swipe-up
+p=$(pos SPACE); set -- $p; x=$1; y=$2
+adb shell input motionevent DOWN $x $y
+for d in 60 140 240 340 450; do adb shell input motionevent MOVE $x $(( y-d )); done
+adb shell input motionevent UP $x $(( y-450 )); sleep 1.2; shot 09-after-swipe-up
+adb logcat -d > ci-out/logcat2.txt
 adb logcat -d -s AmpyDeckKeys:I | grep -aE "swipe|SWIPE|requestHide|TOUCH" | tail -8 | while IFS= read -r l; do echo "::warning::$l"; done
 if adb shell dumpsys input_method | grep -q "mInputShown=true"; then echo "::error::swipe up did not hide the keyboard"; fail=1; fi
 exit $fail
