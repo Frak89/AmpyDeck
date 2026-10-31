@@ -15,9 +15,17 @@ import java.util.Arrays;
 public final class SettingsActivity extends Activity {
     private Prefs pr;private Theme th;private LinearLayout list;private ScrollView sv;
 
-    @Override protected void onCreate(Bundle b){super.onCreate(b);pr=Prefs.get(this);build();}
+    @Override protected void onCreate(Bundle b){super.onCreate(b);CrashLog.install(this);pr=Prefs.get(this);build();
+        if(getIntent().getBooleanExtra("smoke",false))focusTest();}
+    private EditText testField;
+    /** Used by the CI smoke test: focus the test field and open the keyboard. */
+    private void focusTest(){
+        if(testField==null)return;testField.postDelayed(()->{testField.requestFocus();
+            InputMethodManager imm=(InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE);
+            if(imm!=null)imm.showSoftInput(testField,InputMethodManager.SHOW_IMPLICIT);},800);}
     @Override protected void onResume(){super.onResume();if(list!=null)build();}
-    @Override public void onWindowFocusChanged(boolean f){super.onWindowFocusChanged(f);if(f&&list!=null)build();}
+    @Override public void onWindowFocusChanged(boolean f){super.onWindowFocusChanged(f);
+        if(f&&list!=null&&!getIntent().getBooleanExtra("smoke",false)&&(testField==null||!testField.hasFocus()))build();}
 
     private void build(){
         int scroll=sv!=null?sv.getScrollY():0;
@@ -38,7 +46,7 @@ public final class SettingsActivity extends Activity {
         status("1 · Abilita AmpyDeck tra le tastiere",en,()->startActivity(new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)));
         status("2 · Scegli AmpyDeck come tastiera attiva",cur,()->{
             InputMethodManager imm=(InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE);if(imm!=null)imm.showInputMethodPicker();});
-        EditText test=new EditText(this);test.setHint("Prova qui: tocca e scrivi / swipe…");test.setTextColor(th.fg);test.setHintTextColor(th.muted);
+        EditText test=new EditText(this);testField=test;test.setHint("Prova qui: tocca e scrivi / swipe…");test.setTextColor(th.fg);test.setHintTextColor(th.muted);
         test.setTypeface(Ui.MONO);test.setPadding(Ui.dp(14),Ui.dp(14),Ui.dp(14),Ui.dp(14));test.setMinLines(2);
         test.setBackground(new Ui.NeonPanel(th,th.secondary,.6f));
         LinearLayout.LayoutParams tl=new LinearLayout.LayoutParams(-1,-2);tl.topMargin=Ui.dp(8);list.addView(test,tl);
@@ -85,7 +93,17 @@ public final class SettingsActivity extends Activity {
         item("⇧ Maiuscole","Un tocco: maiuscola singola. Doppio tocco: BLOCCO MAIUSCOLE.",()->{});
         item("⧉ Toolbar","Tocca ⧉ nella barra: impostazioni, emoji, appunti, tema, sfondo, replay FX.",()->{});
 
-        section("06 / INFO");
+        section("06 / DIAGNOSTICA");
+        String crash=CrashLog.read(this);
+        if(crash==null)item("Nessun errore registrato","Se la tastiera si chiude da sola, qui compare il motivo.",()->{});
+        else{
+            item("⚠ Ultimo errore — tocca per copiarlo",crash.length()>600?crash.substring(0,600)+"…":crash,()->{
+                android.content.ClipboardManager cm=(android.content.ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);
+                if(cm!=null)cm.setPrimaryClip(android.content.ClipData.newPlainText("AmpyDeck crash",crash));Ui.toast(this,"Errore copiato");});
+            item("Cancella registro errori","",()->{CrashLog.clear(this);build();});
+        }
+
+        section("07 / INFO");
         item("AmpyDeck 1.0 — Neon Keys","Tastiera cyberpunk della famiglia Ampy (AmpyLink, AmpyRocket). Nessun permesso di rete: tutto resta sul telefono.",()->{});
         sv.post(()->sv.scrollTo(0,scroll));
     }

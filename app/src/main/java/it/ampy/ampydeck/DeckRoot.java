@@ -62,6 +62,10 @@ public final class DeckRoot extends FrameLayout {
     }
 
     @Override protected void dispatchDraw(Canvas c){
+        if(!entering){super.dispatchDraw(c);return;}
+        try{entryDraw(c);}catch(Throwable t){CrashLog.log("entryFx",t);entering=false;super.dispatchDraw(c);}
+    }
+    private void entryDraw(Canvas c){
         if(!entering||getWidth()==0||getHeight()==0){super.dispatchDraw(c);return;}
         int w=getWidth(),h=getHeight();
         float t=(SystemClock.uptimeMillis()-start)/(float)dur;

@@ -152,7 +152,23 @@ public final class KeyboardView extends View {
             }
             rowTop[ri]=y;rowBot[ri]=y+h;y+=h;
         }
+        removeCallbacks(logKeys);postDelayed(logKeys,300);
     }
+    /** Key map on logcat (tag AmpyDeckKeys) — used by the CI emulator smoke test to tap real keys. */
+    private final Runnable logKeys=()->{
+        if(!isAttachedToWindow())return;int[] o=new int[2];getLocationOnScreen(o);
+        StringBuilder b=new StringBuilder("PAGE ").append(page).append('\n');
+        for(Layouts.Key k:keys){String id=k.code==Layouts.NONE?k.text:k.code==Layouts.SPACE?"SPACE":k.code==Layouts.DEL?"DEL":k.code==Layouts.ENTER?"ENTER":
+            k.code==Layouts.SHIFT?"SHIFT":k.code==Layouts.SYM?"SYM":k.code==Layouts.ABC?"ABC":k.code==Layouts.MORE?"MORE":k.code==Layouts.EMOJI?"EMOJI":"?";
+            b.append("K ").append(id).append(' ').append((int)(o[0]+k.r.centerX())).append(' ').append((int)(o[1]+k.r.centerY())).append('\n');}
+        float w=(getWidth()-barH*2)/3f;
+        for(int i=0;i<3;i++)b.append("K B").append(i).append(' ').append((int)(o[0]+barH+w*i+w/2)).append(' ').append((int)(o[1]+barH/2)).append('\n');
+        b.append("K TOOLBAR ").append((int)(o[0]+barH/2)).append(' ').append((int)(o[1]+barH/2)).append('\n');
+        b.append("K HIDE ").append((int)(o[0]+getWidth()-barH/2)).append(' ').append((int)(o[1]+barH/2)).append('\n');
+        float bt=panelBottomRowTop();b.append("K PANELABC ").append((int)(o[0]+getWidth()/(float)bottomCells()/2)).append(' ').append((int)(o[1]+bt+(getHeight()-bottomPad-bt)/2)).append('\n');
+        b.append("K PANEL0 ").append((int)(o[0]+emojiCell()/2)).append(' ').append((int)(o[1]+barH+emojiCell()*.43f)).append('\n');
+        for(String l:b.toString().split("\n"))android.util.Log.i("AmpyDeckKeys",l);
+    };
     private void shapeKey(Layouts.Key k){
         k.path.reset();RectF r=k.r;
         if("neon".equals(keyStyle)||"outline".equals(keyStyle)){
@@ -189,6 +205,9 @@ public final class KeyboardView extends View {
 
     // ------------------------------------------------------------------ touch
     @Override public boolean onTouchEvent(MotionEvent e){
+        try{return touch(e);}catch(Throwable t){CrashLog.log("touch",t);resetTouch();return true;}
+    }
+    private boolean touch(MotionEvent e){
         int a=e.getActionMasked();
         switch(a){
             case MotionEvent.ACTION_DOWN:case MotionEvent.ACTION_POINTER_DOWN:{
@@ -379,6 +398,9 @@ public final class KeyboardView extends View {
 
     // ------------------------------------------------------------------ drawing
     @Override protected void onDraw(Canvas c){
+        try{drawAll(c);}catch(Throwable t){CrashLog.log("draw",t);}
+    }
+    private void drawAll(Canvas c){
         long now=SystemClock.uptimeMillis();boolean anim=false;
         drawBar(c,now);
         if(page==Layouts.EMOJIS||page==Layouts.CLIP)drawPanel(c);
@@ -571,10 +593,15 @@ public final class KeyboardView extends View {
             if(center&&centerIsCorrection){float uw=Math.min(tp.measureText(s),w-Ui.dpf(10));
                 p.setColor(Theme.a(th.accent,200));c.drawRect(x+w/2-uw/2,barH*.74f,x+w/2+uw/2,barH*.74f+Ui.dpf(1.5f),p);}
         }
-        // hide keyboard
+        // hide keyboard: framed chevron, top-right (replaces the system "v" at the bottom)
         float x=W-barH;
-        if(barPressed==4){p.setColor(Theme.a(th.secondary,70));c.drawRect(x,0,W,barH-Ui.dpf(2),p);}
-        tp.setTypeface(Ui.MONO_BOLD);tp.setTextSize(barH*.42f);tp.setColor(th.secondary);c.drawText("⌄",x+barH/2,barH*.6f,tp);
+        tr.set(x+Ui.dpf(5),Ui.dpf(6),W-Ui.dpf(5),barH-Ui.dpf(8));chamfer(tmp,tr,Ui.dpf(5));
+        p.setStyle(Paint.Style.FILL);p.setColor(Theme.a(th.secondary,barPressed==4?120:40));c.drawPath(tmp,p);
+        p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(Ui.dpf(1.2f));p.setColor(Theme.a(th.secondary,220));c.drawPath(tmp,p);
+        p.setStrokeWidth(Ui.dpf(2.4f));p.setStrokeCap(Paint.Cap.ROUND);p.setColor(th.fg);
+        float cx=tr.centerX(),cy=tr.centerY(),hw=tr.width()*.22f;
+        c.drawLine(cx-hw,cy-hw*.45f,cx,cy+hw*.55f,p);c.drawLine(cx,cy+hw*.55f,cx+hw,cy-hw*.45f,p);
+        p.setStrokeCap(Paint.Cap.BUTT);p.setStyle(Paint.Style.FILL);
     }
 
     private void drawPanel(Canvas c){

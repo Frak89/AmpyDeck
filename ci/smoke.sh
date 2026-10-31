@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Emulator smoke test: installs AmpyDeck, makes it the active keyboard, taps real keys
+# (letters, comma, unknown word, suggestion slots, emoji, flow) and fails on any crash.
+set -u
+PKG=it.ampy.ampydeck
+APK=app/build/outputs/apk/debug/app-debug.apk
+mkdir -p ci-out
+adb install -r "$APK"
+adb shell ime enable $PKG/.AmpyDeckIME
+adb shell ime set $PKG/.AmpyDeckIME
+adb shell settings get secure default_input_method
+adb logcat -c
+adb shell am start -n $PKG/.SettingsActivity --ez smoke true
+sleep 12
+
+keys(){ adb logcat -d -s AmpyDeckKeys:I | sed -n 's/.*AmpyDeckKeys: //p' > ci-out/keys.txt; }
+pos(){ grep -m1 -F "K $1 " ci-out/keys.txt | tail -1 | awk '{print $3" "$4}'; }
+tap(){ local p; p=$(pos "$1"); if [ -z "$p" ]; then echo "::warning::key '$1' not found"; return; fi
+       adb shell input tap $p; sleep 0.35; }
+type(){ for ch in $(echo "$1" | sed 's/./& /g'); do tap "$ch"; done; }
+shot(){ adb exec-out screencap -p > "ci-out/$1.png"; }
+alive(){ adb shell pidof $PKG >/dev/null && adb shell dumpsys input_method | grep -q "mInputShown=true"; }
+
+keys; sleep 1; keys
+head -5 ci-out/keys.txt
+shot 01-open
+type ciao; tap ","; shot 02-comma
+tap SPACE; type kzqwx; shot 03-unknown
+tap B0; shot 04-pick-unknown
+type grazei; tap SPACE; tap DEL; tap SPACE
+type com; tap B1; tap B1
+# long-press comma / period, then flow swipe c-i-a-o
+p=$(pos ","); adb shell input swipe $p $p 700; sleep 0.4
+p=$(pos "."); adb shell input swipe $p $p 700; sleep 0.4
+c=$(pos c); i=$(pos i); a=$(pos a); o=$(pos o)
+adb shell input motionevent DOWN $c; for q in "$i" "$a" "$o"; do adb shell input motionevent MOVE $q; done; adb shell input motionevent UP $o
+sleep 1; shot 05-flow
+tap SYM; sleep 0.6; keys; tap "@"; tap "ABC"; sleep 0.6; keys
+tap EMOJI; sleep 0.8; keys; tap PANEL0; tap PANELABC; sleep 0.6; keys
+tap TOOLBAR; sleep 0.4; shot 06-toolbar; tap TOOLBAR
+type ok; tap "."; tap ","; shot 07-final
+
+echo "--- text in field"; adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb shell cat /sdcard/ui.xml | grep -o 'class="android.widget.EditText"[^>]*' | grep -o 'text="[^"]*"' | head -2
+crash=$(adb shell run-as $PKG cat files/last_crash.txt 2>/dev/null)
+adb logcat -d > ci-out/logcat.txt
+fatal=$(grep -A25 "FATAL EXCEPTION" ci-out/logcat.txt | grep -B2 -A25 "$PKG" | head -40)
+fail=0
+if [ -n "$crash" ]; then echo "$crash" | head -30 | while IFS= read -r l; do echo "::error::CRASHLOG $l"; done; fail=1; fi
+if [ -n "$fatal" ]; then echo "$fatal" | while IFS= read -r l; do echo "::error::FATAL $l"; done; fail=1; fi
+grep -E "AmpyDeckCrash|ANR in $PKG" ci-out/logcat.txt | head -20 | while IFS= read -r l; do echo "::error::$l"; done
+if ! alive; then echo "::error::keyboard not shown / process gone at end"; fail=1; fi
+exit $fail

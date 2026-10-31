@@ -56,7 +56,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
     };
 
     @Override public void onCreate(){
-        super.onCreate();pr=Prefs.get(this);pr.raw().registerOnSharedPreferenceChangeListener(this);
+        super.onCreate();CrashLog.install(this);pr=Prefs.get(this);pr.raw().registerOnSharedPreferenceChangeListener(this);
         dict=Dictionary.get(this);
         worker=new HandlerThread("ampydeck-predict");worker.start();bg=new Handler(worker.getLooper());
         cm=(ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);
@@ -78,12 +78,15 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
     }
 
     @Override public View onCreateInputView(){
-        root=new DeckRoot(this,this);kv=root.kv;kv.setClips(clips);prefsDirty=false;return root;
+        root=new DeckRoot(this,new SafeListener(this));kv=root.kv;kv.setClips(clips);prefsDirty=false;return root;
     }
     @Override public boolean onEvaluateFullscreenMode(){return false;}
 
     @Override public void onStartInputView(EditorInfo info,boolean restarting){
         super.onStartInputView(info,restarting);
+        try{startView(info,restarting);}catch(Throwable t){CrashLog.log("startInputView",t);}
+    }
+    private void startView(EditorInfo info,boolean restarting){
         if(prefsDirty)applyPrefs();
         dict=Dictionary.get(this);
         composing.setLength(0);autoSpaced=false;flowComposing=false;undoOriginal=null;noCorrectOnce=false;flowAlternates=null;
@@ -113,7 +116,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
         updateWindowColors();
         refreshSuggestions();
     }
-    @Override public void onWindowShown(){super.onWindowShown();if(root!=null){root.setRunning(true);root.playEntry();}}
+    @Override public void onWindowShown(){super.onWindowShown();try{if(root!=null){root.setRunning(true);root.playEntry();}}catch(Throwable t){CrashLog.log("windowShown",t);}}
     @Override public void onWindowHidden(){super.onWindowHidden();if(root!=null)root.setRunning(false);dict.save();}
     @Override public void onFinishInputView(boolean finishing){
         super.onFinishInputView(finishing);
@@ -183,13 +186,13 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
         }
         final String typed=composing.toString();final String prev=prevWord();final boolean ac=autocorrect&&!noCorrectOnce;
         final int seq=++suggestSeq;
-        bg.post(()->{
+        bg.post(CrashLog.safe("suggest",()->{
             Dictionary d=dict;
             List<String> list=d.suggest(typed,prev,5);
             String corr=ac&&!typed.isEmpty()?d.correction(typed,prev):null;
             String[] out=arrange(typed,list,corr);boolean isCorr=corr!=null;
-            ui.post(()->{if(seq==suggestSeq&&kv!=null)kv.setSuggestions(out[0],out[1],out[2],isCorr);});
-        });
+            ui.post(CrashLog.safe("suggest-ui",()->{if(seq==suggestSeq&&kv!=null)kv.setSuggestions(out[0],out[1],out[2],isCorr);}));
+        }));
     }
     /** SwiftKey arrangement: centre = what space will commit, left = verbatim, right = next best. */
     private static String[] arrange(String typed,List<String> list,String corr){
@@ -223,7 +226,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
     }
 
     /** Learning may rebuild the word index: keep it off the UI thread. */
-    private void learnLater(String w,String prev){final Dictionary d=dict;bg.post(()->d.learn(w,prev));}
+    private void learnLater(String w,String prev){final Dictionary d=dict;bg.post(CrashLog.safe("learn '"+w+"'",()->d.learn(w,prev)));}
 
     private void typeLetter(String s){
         InputConnection ic=ic();if(ic==null)return;
@@ -331,10 +334,10 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
     @Override public void onFlow(List<PointF> path,Map<Character,PointF> keys,float keyW){
         final int shift=kv.shift();
         final String prev=composing.length()>0?composing.toString():prevWordForFlow();
-        bg.post(()->{
+        bg.post(CrashLog.safe("flow",()->{
             List<String> words=FlowDecoder.decode(dict,path,keys,keyW,prev,4);
-            ui.post(()->applyFlow(words,shift));
-        });
+            ui.post(CrashLog.safe("flow-ui",()->applyFlow(words,shift)));
+        }));
     }
     private void applyFlow(List<String> words,int shift){
         InputConnection ic=ic();if(ic==null||words.isEmpty())return;
@@ -368,7 +371,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
     }
     @Override public void onForget(int slot){
         String s=kv.suggestion(slot);if(s.startsWith("\""))return;
-        final Dictionary d=dict;bg.post(()->{d.forget(s);ui.post(this::refreshSuggestions);});Ui.toast(this,"« "+s+" » rimossa dai suggerimenti");refreshSuggestions();
+        final Dictionary d=dict;bg.post(CrashLog.safe("forget",()->{d.forget(s);ui.post(this::refreshSuggestions);}));Ui.toast(this,"« "+s+" » rimossa dai suggerimenti");refreshSuggestions();
     }
 
     @Override public void onToolbar(String action){
@@ -401,6 +404,9 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
 
     @Override public void onUpdateSelection(int oss,int ose,int nss,int nse,int cs,int ce){
         super.onUpdateSelection(oss,ose,nss,nse,cs,ce);
+        try{selectionMoved(oss,ose,nss,nse,cs,ce);}catch(Throwable t){CrashLog.log("selection",t);}
+    }
+    private void selectionMoved(int oss,int ose,int nss,int nse,int cs,int ce){
         if(composing.length()>0&&(nss!=ce||nse!=ce)){
             // cursor jumped away from the word being composed
             composing.setLength(0);flowComposing=false;flowAlternates=null;
