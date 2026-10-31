@@ -221,6 +221,7 @@ public final class KeyboardView extends View {
     }
     private boolean touch(MotionEvent e){
         int a=e.getActionMasked();
+        if(a!=MotionEvent.ACTION_MOVE)android.util.Log.i("AmpyDeckKeys","TOUCH a="+a+" y="+(int)e.getY()+" key="+(downKey==null?"-":downKey.label+downKey.code)+" hide="+swipeHide);
         switch(a){
             case MotionEvent.ACTION_DOWN:case MotionEvent.ACTION_POINTER_DOWN:{
                 int i=e.getActionIndex();
@@ -727,7 +728,7 @@ public final class KeyboardView extends View {
             keyBody(c,tmp,tr,edge,false,sel);
             tp.setTextAlign(Paint.Align.CENTER);
             boolean emoji=page==Layouts.EMOJIS&&i>0&&i<n-1;
-            tp.setTypeface(emoji?Typeface.DEFAULT:Ui.MONO_BOLD);tp.setTextSize(Math.min(h*.36f,tr.width()*(lab.length()>3?.16f:.42f)));
+            tp.setTypeface(emoji?Typeface.DEFAULT:Ui.MONO_BOLD);tp.setTextSize(h*.3f);{float lw=tp.measureText(lab);if(lw>tr.width()*.8f)tp.setTextSize(h*.3f*tr.width()*.8f/lw);}
             tp.setColor(emoji?(sel?0xffffffff:0xaaffffff):i==0?th.secondary:th.fg);
             Paint.FontMetrics fm=tp.getFontMetrics();c.drawText(lab,tr.centerX(),tr.centerY()-(fm.ascent+fm.descent)/2f,tp);
         }
