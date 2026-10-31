@@ -349,7 +349,7 @@ public final class KeyboardView extends View {
     private float panelBottomRowTop(){return getHeight()-bottomPad-keyH()*.95f;}
     private int emojiCols(){return getWidth()>Ui.dpf(560)?11:8;}
     private float emojiCell(){return getWidth()/(float)emojiCols();}
-    private String[] emojiList(){return emojiTab==0?recents.toArray(new String[0]):Layouts.EMOJI[emojiTab];}
+    private String[] emojiList(){return emojiTab==0?recents.toArray(new String[0]):Layouts.EMOJI_SETS[emojiTab];}
     private float panelContentH(){
         if(page==Layouts.CLIP)return Math.max(1,clips.size())*Ui.dpf(46)+Ui.dpf(8);
         int n=emojiList().length;int rowsN=(n+emojiCols()-1)/emojiCols();return rowsN*emojiCell()*.86f+Ui.dpf(8);
