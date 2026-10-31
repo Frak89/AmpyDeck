@@ -392,7 +392,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
 
     @Override public void onToolbar(String action){
         switch(action){
-            case "hide":android.util.Log.i("AmpyDeckKeys","requestHideSelf");requestHideSelf(0);break;
+            case "hide":requestHideSelf(0);break;
             case "settings":startActivity(new Intent(this,SettingsActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));break;
             case "emoji":kv.setPage(Layouts.EMOJIS);break;
             case "clip":kv.setPage(Layouts.CLIP);break;
