@@ -36,8 +36,8 @@ set -- $b
 for t in 1 2 3 4; do
   anr
   [ $# -ge 4 ] && adb shell input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 ))
-  sleep 0.5; adb exec-out screencap -p > ci-out/00-entry-tiles-$t.png
-  sleep 4.5
+  for f in 1 2 3 4; do sleep 0.4; adb exec-out screencap -p > ci-out/00-entry-$t-$f.png; done
+  sleep 3
   adb logcat -d -s AmpyDeckKeys:I | grep -q "K SPACE" && break
   echo "keyboard not up yet, retry $t"
 done
