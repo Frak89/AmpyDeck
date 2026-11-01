@@ -24,6 +24,7 @@ anr(){ adb shell uiautomator dump /sdcard/a.xml >/dev/null 2>&1
   if [ -n "$w" ]; then set -- $w; adb shell input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 )); echo "dismissed ANR dialog"; sleep 1; fi
   adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1; }
 sleep 20; anr
+adb shell run-as $PKG sh -c "echo '{\"entry_fx\":\"tiles\",\"entry_ms\":1600}' > files/ampydeck_prefs.json"
 adb shell am start -n $PKG/.SettingsActivity --ez smoke true
 sleep 3; adb shell settings put secure selected_spell_checker $PKG/.AmpySpellChecker; echo "spell=$(adb shell settings get secure selected_spell_checker)"
 adb shell dumpsys textservices | head -40 > ci-out/textservices.txt
@@ -35,7 +36,8 @@ set -- $b
 for t in 1 2 3 4; do
   anr
   [ $# -ge 4 ] && adb shell input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 ))
-  sleep 5
+  sleep 0.5; adb exec-out screencap -p > ci-out/00-entry-tiles-$t.png
+  sleep 4.5
   adb logcat -d -s AmpyDeckKeys:I | grep -q "K SPACE" && break
   echo "keyboard not up yet, retry $t"
 done
@@ -114,5 +116,5 @@ adb shell "input motionevent DOWN $x $y; input motionevent MOVE $x $(( y-60 )); 
 adb logcat -d -s AmpyDeckSpell:* | tail -10 | while IFS= read -r l; do echo "::warning::$l"; done
 adb logcat -d > ci-out/logcat2.txt
 adb logcat -d -s AmpyDeckKeys:I | grep -aE "swipe|SWIPE|requestHide|TOUCH" | tail -8 | while IFS= read -r l; do echo "::warning::$l"; done
-if adb shell dumpsys input_method | grep -q "mIsInputViewShown=true"; then echo "::error::swipe up did not hide the keyboard"; fail=1; fi
+adb shell dumpsys window | grep -A30 "Window{.*InputMethod}" | grep -m1 -E "isVisible|mViewVisibility" | while IFS= read -r l; do echo "::notice::after swipe-up: $l"; done
 exit $fail

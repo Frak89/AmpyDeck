@@ -54,7 +54,7 @@ public final class AmpySpellChecker extends SpellCheckerService {
 
         private SuggestionsInfo check(String w,int limit,boolean elided){
             Dictionary d=Dictionary.get(AmpySpellChecker.this);
-            if(!d.ready||w==null||w.length()<2){android.util.Log.i("AmpyDeckSpell","skip "+w+" ready="+d.ready);return ok();}
+            if(!d.ready||w==null||w.length()<2)return ok();
             for(int i=0;i<w.length();i++)if(!Character.isLetter(w.charAt(i))&&w.charAt(i)!='\'')return ok();
             if(d.known(w))return ok();
             if(elided&&(w.length()<=5||d.known(w+"'")))return ok();          // dell'anno, quest'anno, l'acqua
@@ -65,7 +65,6 @@ public final class AmpySpellChecker extends SpellCheckerService {
             for(String x:d.suggest(w.length()>3?w.substring(0,w.length()-1):w,null,4))if(!sug.contains(x)&&!x.equalsIgnoreCase(w))sug.add(x);
             while(sug.size()>Math.max(1,limit))sug.remove(sug.size()-1);
             int attr=SuggestionsInfo.RESULT_ATTR_LOOKS_LIKE_TYPO|(sug.isEmpty()?0:SuggestionsInfo.RESULT_ATTR_HAS_RECOMMENDED_SUGGESTIONS);
-            android.util.Log.i("AmpyDeckSpell","typo "+w+" -> "+sug);
             return new SuggestionsInfo(attr,sug.toArray(new String[0]));
         }
     }
