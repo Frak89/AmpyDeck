@@ -32,6 +32,14 @@ public final class FlowDecoder {
         String[] W;String[] NW;int[] F;
         synchronized(d){W=d.words;NW=d.norm;F=d.freq;}
         StringBuilder sb=new StringBuilder();
+        // learnt words outside the base lists join the candidates (scored like mid-frequency words)
+        List<String> ex=d.extraWords();
+        if(!ex.isEmpty()){
+            String[] W2=new String[W.length+ex.size()],N2=new String[W.length+ex.size()];int[] F2=new int[W.length+ex.size()];
+            System.arraycopy(W,0,W2,0,W.length);System.arraycopy(NW,0,N2,0,NW.length);System.arraycopy(F,0,F2,0,F.length);
+            for(int k=0;k<ex.size();k++){W2[W.length+k]=ex.get(k);N2[W.length+k]=Dictionary.normalize(ex.get(k));F2[W.length+k]=40;}
+            W=W2;NW=N2;F=F2;
+        }
         for(int i=0;i<NW.length;i++){
             String w=NW[i];if(w.length()<2)continue;
             sb.setLength(0);char last=0;boolean ok=true;
@@ -40,6 +48,7 @@ public final class FlowDecoder {
             if(!ok||sb.length()<1)continue;
             String cw=sb.toString();
             if(!S.contains(cw.charAt(0))||!E.contains(cw.charAt(cw.length()-1)))continue;
+            if(d.isBlocked(W[i]))continue;
             if(cw.length()==1&&pathLen>keyW*1.2f)continue;
             // every letter must be passed, in order
             int at=0;boolean inOrder=true;

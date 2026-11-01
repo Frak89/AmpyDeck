@@ -168,7 +168,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
     }
 
     // ------------------------------------------------------------------ text context helpers
-    private InputConnection ic(){return getCurrentInputConnection();}
+    private InputConnection ic(){lastSelfEdit=SystemClock.uptimeMillis();return getCurrentInputConnection();}
     private String before(int n){InputConnection ic=ic();if(ic==null)return "";CharSequence s=ic.getTextBeforeCursor(n,0);return s==null?"":s.toString();}
     private static boolean wordChar(char c){return Character.isLetter(c)||c=='\''||c=='’';}
     /** Word before the composing/current word (for bigrams). */
@@ -200,7 +200,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
     }
 
     // ------------------------------------------------------------------ suggestions
-    private String editWord;private int editStart,editEnd;
+    private String editWord;private int editStart,editEnd;private long lastSelfEdit;
     private void refreshSuggestions(){
         if(kv==null)return;
         if(!predict){kv.setSuggestions("","","",false);return;}
@@ -484,7 +484,8 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
         }else if(composing.length()==0&&(nss!=ose||nse!=ose)&&cs==-1){
             if(Math.abs(nss-oss)>1||nss!=nse){undoOriginal=null;autoSpaced=false;}
             editWord=null;
-            if(nss==nse&&Math.abs(nss-oss)>1&&predict)findEditWord(nss);
+            // a selection change we did not cause = the user tapped somewhere in the text
+            if(nss==nse&&predict&&SystemClock.uptimeMillis()-lastSelfEdit>250)findEditWord(nss);
             updateShift();refreshSuggestions();
         }
     }

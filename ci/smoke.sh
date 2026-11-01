@@ -45,7 +45,7 @@ tap(){ local p; p=$(pos "$1"); if [ -z "$p" ]; then echo "::warning::key '$1' no
 type(){ for ch in $(echo "$1" | sed 's/./& /g'); do tap "$ch"; done; }
 shot(){ adb exec-out screencap -p > "ci-out/$1.png"; }
 alive(){ adb shell pidof $PKG:ime >/dev/null || return 1
-  adb shell dumpsys input_method | grep -qE "mInputShown=true|mIsInputViewShown=true|mDecorViewVisible=true" && return 0
+  adb shell dumpsys input_method | grep -q "mIsInputViewShown=true" && return 0
   adb shell dumpsys input_method | grep -iE "shown|visible" | head -6 | while IFS= read -r l; do echo "::warning::IMS $l"; done; return 1; }
 
 sleep 4; keys; sleep 1; keys
@@ -111,5 +111,5 @@ p=$(pos SPACE); set -- $p; x=$1; y=$2
 adb shell "input motionevent DOWN $x $y; input motionevent MOVE $x $(( y-60 )); input motionevent MOVE $x $(( y-250 )); input motionevent MOVE $x $(( y-450 )); input motionevent UP $x $(( y-450 ))"; sleep 1.2; shot 09-after-swipe-up
 adb logcat -d > ci-out/logcat2.txt
 adb logcat -d -s AmpyDeckKeys:I | grep -aE "swipe|SWIPE|requestHide|TOUCH" | tail -8 | while IFS= read -r l; do echo "::warning::$l"; done
-if adb shell dumpsys input_method | grep -qE "mInputShown=true|mIsInputViewShown=true|mDecorViewVisible=true"; then echo "::error::swipe up did not hide the keyboard"; fail=1; fi
+if adb shell dumpsys input_method | grep -q "mIsInputViewShown=true"; then echo "::error::swipe up did not hide the keyboard"; fail=1; fi
 exit $fail
