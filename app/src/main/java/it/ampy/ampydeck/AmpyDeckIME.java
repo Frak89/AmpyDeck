@@ -85,6 +85,8 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
         return root;
     }
     @Override public boolean onEvaluateFullscreenMode(){return false;}
+    /** Show the on-screen keyboard even when a hardware keyboard is attached (like Gboard does). */
+    @Override public boolean onEvaluateInputViewShown(){super.onEvaluateInputViewShown();return true;}
 
     /**
      * Android 16+: hide the system-drawn IME bar (the "v" back chevron and the keyboard-switch globe)

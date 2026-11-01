@@ -333,12 +333,14 @@ public final class KeyboardView extends View {
         if(popItems!=null){popSel=popIndex(x);invalidate();return;}
         // swipe up from the bottom row = hide the keyboard
         if(!cursorMode&&!flowing&&!longFired&&rows.size()>0&&rows.get(rows.size()-1).keys.contains(downKeyAtDown)){
+            if(-dy>Ui.dpf(12))removeCallbacks(longPress);
             float rowH=rowBot[rows.size()-1]-rowTop[rows.size()-1];
             boolean up=-dy>rowH*1.7f&&-dy>Math.abs(dx)*1.6f;
             if(up!=swipeHide){swipeHide=up;removeCallbacks(longPress);invalidate();}
             if(swipeHide||-dy>rowH*.6f&&-dy>Math.abs(dx))return;
         }
         if(downKey.code==Layouts.SPACE){
+            if(!longFired&&Math.hypot(dx,dy)>Ui.dpf(12))removeCallbacks(longPress);   // moving = not a hold (trackpad needs a still press)
             if(!cursorMode&&Math.abs(dx)>Ui.dpf(16)){cursorMode=true;removeCallbacks(longPress);cursorAnchor=x;}
             if(cursorMode){float step=Ui.dpf(11);
                 while(x-cursorAnchor>step){L.onCursor(1);cursorAnchor+=step;tap(0);}
