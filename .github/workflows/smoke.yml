@@ -6,6 +6,10 @@ on:
     paths: [ 'app/**', 'ci/**', '.github/workflows/smoke.yml' ]
 jobs:
   smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [34, 36]
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
@@ -31,7 +35,7 @@ jobs:
       - name: Run on emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 36
+          api-level: ${{ matrix.api }}
           arch: x86_64
           target: google_apis
           profile: pixel_6
@@ -42,6 +46,6 @@ jobs:
         if: always()
         run: |
           [ -d ci-out ] || exit 0
-          cd ci-out && git init -q && git checkout -q -b ci-shots && git add -A
+          cd ci-out && git init -q && git checkout -q -b ci-shots-${{ matrix.api }} && git add -A
           git -c user.name=ci -c user.email=ci@local commit -qm "smoke ${GITHUB_SHA::7}"
-          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" ci-shots
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" ci-shots-${{ matrix.api }}

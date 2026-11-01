@@ -24,7 +24,6 @@ anr(){ adb shell uiautomator dump /sdcard/a.xml >/dev/null 2>&1
   if [ -n "$w" ]; then set -- $w; adb shell input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 )); echo "dismissed ANR dialog"; sleep 1; fi
   adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1; }
 sleep 20; anr
-adb logcat -c
 adb shell am start -n $PKG/.SettingsActivity --ez smoke true
 sleep 6
 # tap the test field (first EditText) to be sure the keyboard opens
@@ -52,6 +51,9 @@ alive(){ adb shell pidof $PKG:ime >/dev/null || return 1
 sleep 4; keys; sleep 1; keys
 grep -q "K SPACE" ci-out/keys.txt || { echo "::error::keyboard never opened"; adb exec-out screencap -p > ci-out/00-noopen.png
   adb logcat -d > ci-out/logcat.txt; adb shell dumpsys input_method > ci-out/ims.txt
+  pid=$(adb shell pidof $PKG:ime); echo "::warning::ime pid=$pid"
+  [ -n "$pid" ] && adb shell kill -3 $pid && sleep 2 && adb logcat -d > ci-out/logcat-anr.txt
+  grep -a " $pid " ci-out/logcat.txt | tail -30 | while IFS= read -r l; do echo "::warning::IME $l"; done
   grep -aE "AmpyDeck|FATAL|AndroidRuntime|ampydeck" ci-out/logcat.txt | grep -v AmpyDeckKeys | tail -25 | while IFS= read -r l; do echo "::warning::$l"; done
   exit 1; }
 grep -a FIT ci-out/keys.txt | while IFS= read -r l; do echo "::warning::$l"; done
