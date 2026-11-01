@@ -24,7 +24,8 @@ anr(){ adb shell uiautomator dump /sdcard/a.xml >/dev/null 2>&1
   if [ -n "$w" ]; then set -- $w; adb shell input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 )); echo "dismissed ANR dialog"; sleep 1; fi
   adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1; }
 sleep 20; anr
-adb shell run-as $PKG sh -c "echo '{\"entry_fx\":\"tiles\",\"entry_ms\":1600}' > files/ampydeck_prefs.json"
+echo '{"entry_fx":"tiles","entry_ms":1600}' > /tmp/p.json; adb push /tmp/p.json /data/local/tmp/p.json >/dev/null; adb shell chmod 644 /data/local/tmp/p.json
+adb shell run-as $PKG mkdir -p files; adb shell run-as $PKG cp /data/local/tmp/p.json files/ampydeck_prefs.json; echo "prefs: $(adb shell run-as $PKG cat files/ampydeck_prefs.json)"
 adb shell am start -n $PKG/.SettingsActivity --ez smoke true
 sleep 3; adb shell settings put secure selected_spell_checker $PKG/.AmpySpellChecker; echo "spell=$(adb shell settings get secure selected_spell_checker)"
 adb shell dumpsys textservices | head -40 > ci-out/textservices.txt
