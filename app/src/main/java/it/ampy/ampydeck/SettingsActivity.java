@@ -22,8 +22,8 @@ public final class SettingsActivity extends Activity {
     private void spellProbe(){
         try{
             android.view.textservice.TextServicesManager tsm=(android.view.textservice.TextServicesManager)getSystemService(TEXT_SERVICES_MANAGER_SERVICE);
-            if(Build.VERSION.SDK_INT>=31)android.util.Log.i("AmpyDeckSpell","current="+tsm.getCurrentSpellCheckerInfo()+" enabled="+tsm.isSpellCheckerEnabled());
-            android.view.textservice.SpellCheckerSession ss=tsm.newSpellCheckerSession(null,java.util.Locale.ITALY,new android.view.textservice.SpellCheckerSession.SpellCheckerSessionListener(){
+            if(Build.VERSION.SDK_INT>=31)android.util.Log.i("AmpyDeckSpell","current="+(tsm.getCurrentSpellCheckerInfo()==null?null:tsm.getCurrentSpellCheckerInfo().getId())+" enabled="+tsm.isSpellCheckerEnabled());
+            android.view.textservice.SpellCheckerSession ss=tsm.newSpellCheckerSession(null,java.util.Locale.US,new android.view.textservice.SpellCheckerSession.SpellCheckerSessionListener(){
                 @Override public void onGetSuggestions(android.view.textservice.SuggestionsInfo[] r){android.util.Log.i("AmpyDeckSpell","probe words "+r.length);}
                 @Override public void onGetSentenceSuggestions(android.view.textservice.SentenceSuggestionsInfo[] r){
                     StringBuilder b=new StringBuilder();for(android.view.textservice.SentenceSuggestionsInfo x:r)if(x!=null)for(int i=0;i<x.getSuggestionsCount();i++)
