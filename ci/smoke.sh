@@ -109,7 +109,7 @@ if ! alive; then echo "::error::keyboard not shown / process gone at end"; fail=
 # swipe up from the space bar must hide the keyboard
 p=$(pos SPACE); set -- $p; x=$1; y=$2
 adb shell "input motionevent DOWN $x $y; input motionevent MOVE $x $(( y-60 )); input motionevent MOVE $x $(( y-250 )); input motionevent MOVE $x $(( y-450 )); input motionevent UP $x $(( y-450 ))"; sleep 1.2; shot 09-after-swipe-up
-adb logcat -d -s AmpyDeckSpell:I | tail -8 | while IFS= read -r l; do echo "::warning::$l"; done
+adb logcat -d -s AmpyDeckSpell:* | tail -10 | while IFS= read -r l; do echo "::warning::$l"; done
 adb logcat -d > ci-out/logcat2.txt
 adb logcat -d -s AmpyDeckKeys:I | grep -aE "swipe|SWIPE|requestHide|TOUCH" | tail -8 | while IFS= read -r l; do echo "::warning::$l"; done
 if adb shell dumpsys input_method | grep -q "mIsInputViewShown=true"; then echo "::error::swipe up did not hide the keyboard"; fail=1; fi

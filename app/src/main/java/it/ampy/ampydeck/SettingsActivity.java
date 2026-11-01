@@ -17,7 +17,23 @@ public final class SettingsActivity extends Activity {
     private Prefs pr;private Theme th;private LinearLayout list;private ScrollView sv;
 
     @Override protected void onCreate(Bundle b){super.onCreate(b);CrashLog.install(this);pr=Prefs.get(this);build();
-        if(getIntent().getBooleanExtra("smoke",false))focusTest();}
+        if(getIntent().getBooleanExtra("smoke",false)){focusTest();spellProbe();}}
+    /** CI diagnostics: ask the system spell checker directly and log what answers. */
+    private void spellProbe(){
+        try{
+            android.view.textservice.TextServicesManager tsm=(android.view.textservice.TextServicesManager)getSystemService(TEXT_SERVICES_MANAGER_SERVICE);
+            if(Build.VERSION.SDK_INT>=31)android.util.Log.i("AmpyDeckSpell","current="+tsm.getCurrentSpellCheckerInfo()+" enabled="+tsm.isSpellCheckerEnabled());
+            android.view.textservice.SpellCheckerSession ss=tsm.newSpellCheckerSession(null,java.util.Locale.ITALY,new android.view.textservice.SpellCheckerSession.SpellCheckerSessionListener(){
+                @Override public void onGetSuggestions(android.view.textservice.SuggestionsInfo[] r){android.util.Log.i("AmpyDeckSpell","probe words "+r.length);}
+                @Override public void onGetSentenceSuggestions(android.view.textservice.SentenceSuggestionsInfo[] r){
+                    StringBuilder b=new StringBuilder();for(android.view.textservice.SentenceSuggestionsInfo x:r)if(x!=null)for(int i=0;i<x.getSuggestionsCount();i++)
+                        b.append(x.getOffsetAt(i)).append(':').append(x.getSuggestionsInfoAt(i).getSuggestionsAttributes()).append(' ');
+                    android.util.Log.i("AmpyDeckSpell","probe sentence "+b);}
+            },true);
+            android.util.Log.i("AmpyDeckSpell","session="+ss);
+            if(ss!=null)testField.postDelayed(()->ss.getSentenceSuggestions(new android.view.textservice.TextInfo[]{new android.view.textservice.TextInfo("ciao kzqwx grazei")},3),3000);
+        }catch(Throwable t){android.util.Log.e("AmpyDeckSpell","probe",t);}
+    }
     private EditText testField;
     /** Used by the CI smoke test: focus the test field and open the keyboard. */
     private void focusTest(){
