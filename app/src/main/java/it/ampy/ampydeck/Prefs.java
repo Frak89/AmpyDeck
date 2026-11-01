@@ -24,8 +24,9 @@ public final class Prefs {
     public static final String[] BG_NAMES={"GRIGLIA SYNTHWAVE","PIOGGIA DIGITALE","RETE DI PARTICELLE",
         "ALVEARE ESAGONALE","WARP / STARFIELD","SOLO TEMA (statico)"};
     // Keyboard entry animation
-    public static final String[] ENTRY={"glitchgenie","genie","glitch","none"};
-    public static final String[] ENTRY_NAMES={"GLITCH + GENIE (AmpyRocket)","SOLO GENIE / LAMPADA","SOLO GLITCH","NESSUNA"};
+    public static final String[] ENTRY={"glitchgenie","genie","glitch","tiles","drop","wave","crt","random","none"};
+    public static final String[] ENTRY_NAMES={"GLITCH + GENIE (AmpyRocket)","SOLO GENIE / LAMPADA","SOLO GLITCH",
+        "TASSELLI CHE SI UNISCONO","TASTI CHE CADONO","ONDA DAL BASSO","ACCENSIONE CRT","CASUALE (ogni volta diversa)","NESSUNA"};
     // Dictionary languages
     public static final String[] LANG={"it","en","iten"};
     public static final String[] LANG_NAMES={"ITALIANO","ENGLISH","ITALIANO + ENGLISH"};

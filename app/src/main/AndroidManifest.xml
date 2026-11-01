@@ -37,5 +37,19 @@
                 android:name="android.view.im"
                 android:resource="@xml/method" />
         </service>
+
+        <service
+            android:name=".AmpySpellChecker"
+            android:exported="true"
+            android:label="@string/spell_name"
+            android:process=":ime"
+            android:permission="android.permission.BIND_TEXT_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.textservice.SpellCheckerService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.view.textservice.scs"
+                android:resource="@xml/spellchecker" />
+        </service>
     </application>
 </manifest>

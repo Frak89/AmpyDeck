@@ -23,13 +23,18 @@ public final class SettingsActivity extends Activity {
         if(testField==null)return;testField.postDelayed(()->{testField.requestFocus();
             InputMethodManager imm=(InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE);
             if(imm!=null)imm.showSoftInput(testField,InputMethodManager.SHOW_IMPLICIT);},800);}
-    @Override protected void onResume(){super.onResume();if(list!=null)build();}
+    @Override protected void onResume(){super.onResume();if(list!=null&&statusKey()!=builtStatus)build();}
     @Override public void onWindowFocusChanged(boolean f){super.onWindowFocusChanged(f);
-        if(f&&list!=null&&!getIntent().getBooleanExtra("smoke",false)&&(testField==null||!testField.hasFocus()))build();}
+        // rebuild only when the activation status really changed (coming back from system screens):
+        // rebuilding while typing would destroy the test field and close the keyboard
+        if(f&&list!=null&&statusKey()!=builtStatus)build();}
+    private int builtStatus=-1;
+    private int statusKey(){return (AmpyDeckIME.isEnabled(this)?1:0)|(AmpyDeckIME.isCurrent(this)?2:0)|(spellOn()?4:0);}
+    private boolean spellOn(){String s=Settings.Secure.getString(getContentResolver(),"selected_spell_checker");return s!=null&&s.startsWith(getPackageName()+"/");}
 
     private void build(){
         int scroll=sv!=null?sv.getScrollY():0;
-        th=Theme.load(this);
+        th=Theme.load(this);builtStatus=statusKey();
         getWindow().setStatusBarColor(th.bg);getWindow().setNavigationBarColor(th.bg);
         FrameLayout root=new FrameLayout(this);
         CyberBackgroundView bg=new CyberBackgroundView(this);root.addView(bg);
@@ -46,6 +51,10 @@ public final class SettingsActivity extends Activity {
         status("1 · Abilita AmpyDeck tra le tastiere",en,()->startActivity(new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)));
         status("2 · Scegli AmpyDeck come tastiera attiva",cur,()->{
             InputMethodManager imm=(InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE);if(imm!=null)imm.showInputMethodPicker();});
+        status("3 · Controllo ortografico AmpyDeck (sottolineatura rossa)",spellOn(),()->{
+            try{startActivity(new Intent().setClassName("com.android.settings","com.android.settings.Settings$SpellCheckersSettingsActivity"));}
+            catch(Throwable e){try{startActivity(new Intent("android.settings.SPELL_CHECKER_SETTINGS"));}
+                catch(Throwable e2){startActivity(new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS));}}});
         EditText test=new EditText(this);testField=test;test.setHint("Prova qui: tocca e scrivi / swipe…");test.setTextColor(th.fg);test.setHintTextColor(th.muted);
         test.setTypeface(Ui.MONO);test.setPadding(Ui.dp(14),Ui.dp(14),Ui.dp(14),Ui.dp(14));test.setMinLines(2);
         test.setBackground(new Ui.NeonPanel(th,th.secondary,.6f));
@@ -88,10 +97,11 @@ public final class SettingsActivity extends Activity {
             Dictionary.clearLearnt(this);pr.put("dict_reset",pr.i("dict_reset",0)+1);Ui.toast(this,"Dizionario personale azzerato");build();});
 
         section("05 / GESTI RAPIDI");
-        item("Barra spaziatrice","Scorri a destra/sinistra: muovi il cursore. Tieni premuto: cambia tastiera.",()->{});
+        item("Barra spaziatrice","Scorri a destra/sinistra: muovi il cursore. Tieni premuto: TRACKPAD (muovi il dito, rilascia per tornare). Dal basso verso l'alto: chiudi.",()->{});
         item("⌫ Cancella","Tieni premuto: ripeti (poi parole intere). Scorri a sinistra: cancella la parola.",()->{});
         item("⇧ Maiuscole","Un tocco: maiuscola singola. Doppio tocco: BLOCCO MAIUSCOLE.",()->{});
-        item("⧉ Toolbar","Tocca ⧉ nella barra: impostazioni, emoji, appunti, tema, sfondo, replay FX.",()->{});
+        item("⧉ Toolbar","Tocca ⧉ nella barra: impostazioni, emoji, appunti, tema, sfondo, replay FX, cambio tastiera.",()->{});
+        item("Parola sottolineata","Tocca una parola già scritta: la barra mostra le correzioni, toccane una per sostituirla.",()->{});
 
         section("06 / DIAGNOSTICA");
         String crash=CrashLog.read(this);

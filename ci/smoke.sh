@@ -15,6 +15,9 @@ for t in $(seq 1 10); do
   adb shell settings get secure default_input_method | grep -q "$PKG" && break; sleep 2
 done
 echo "default IME: $(adb shell settings get secure default_input_method)"
+adb shell settings put secure spell_checker_enabled 1
+adb shell settings put secure selected_spell_checker $PKG/.AmpySpellChecker
+adb shell settings put secure selected_spell_checker_subtype 0
 # dismiss "X isn't responding" system dialogs (slow CI emulators)
 anr(){ adb shell uiautomator dump /sdcard/a.xml >/dev/null 2>&1
   w=$(adb shell cat /sdcard/a.xml | grep -o 'text="Wait"[^>]*bounds="[^"]*"' | grep -o 'bounds="[^"]*"' | grep -o '[0-9]*' | tr '\n' ' ')
@@ -42,7 +45,9 @@ tap(){ local p; p=$(pos "$1"); if [ -z "$p" ]; then echo "::warning::key '$1' no
        adb shell input tap $p; sleep 0.35; }
 type(){ for ch in $(echo "$1" | sed 's/./& /g'); do tap "$ch"; done; }
 shot(){ adb exec-out screencap -p > "ci-out/$1.png"; }
-alive(){ adb shell pidof $PKG:ime >/dev/null && adb shell dumpsys input_method | grep -q "mInputShown=true"; }
+alive(){ adb shell pidof $PKG:ime >/dev/null || return 1
+  adb shell dumpsys input_method | grep -qE "mInputShown=true|mIsInputViewShown=true|mDecorViewVisible=true" && return 0
+  adb shell dumpsys input_method | grep -iE "shown|visible" | head -6 | while IFS= read -r l; do echo "::warning::IMS $l"; done; return 1; }
 
 sleep 4; keys; sleep 1; keys
 grep -q "K SPACE" ci-out/keys.txt || { echo "::error::keyboard never opened"; adb exec-out screencap -p > ci-out/00-noopen.png; exit 1; }
@@ -62,6 +67,17 @@ p=$(pos "."); adb shell input swipe $p $p 700; sleep 0.4
 c=$(pos c); i=$(pos i); a=$(pos a); o=$(pos o)
 adb shell input motionevent DOWN $c; for q in "$i" "$a" "$o"; do adb shell input motionevent MOVE $q; done; adb shell input motionevent UP $o
 sleep 1; shot 05-flow
+# hold space = trackpad while the finger is down; drag around (also near the screen edge), release
+p=$(pos SPACE); set -- $p; x=$1; y=$2
+adb shell input motionevent DOWN $x $y; sleep 1.0
+for d in 80 200 320 -200 -420; do adb shell input motionevent MOVE $(( x+d )) $(( y-60 )); done
+shot 05b-spacepad
+adb shell input motionevent MOVE 8 $(( y-120 )); adb shell input motionevent UP 8 $(( y-120 )); sleep 0.6
+alive || echo "::error::keyboard closed during space-trackpad gesture"
+# tap inside an already written word: suggestions for it, keyboard must stay
+set -- $b; [ $# -ge 4 ] && adb shell input tap $(( $1+60 )) $(( $2+70 )); sleep 1.2; shot 05c-word-tap
+alive || echo "::error::keyboard closed after tapping a written word"
+keys; tap B1; sleep 0.5
 tap SYM; sleep 0.6; keys; tap "@"; tap "ABC"; sleep 0.6; keys
 tap EMOJI; sleep 0.8; keys; tap PANEL0; tap PANELABC; sleep 0.6; keys
 tap TOOLBAR; sleep 0.4; shot 06-toolbar; tap TOOLBAR
@@ -69,6 +85,9 @@ type ok; tap "."; tap ","; shot 07-final
 # trackpad: hold ?123, drag around, select mode, back
 p=$(pos SYM); adb shell input swipe $p $p 800; sleep 0.8; keys; shot 08-trackpad
 p=$(pos PANEL0); set -- $p; adb shell input swipe $1 $(( $2+60 )) $(( $1+300 )) $(( $2+60 )) 500; sleep 0.4
+# drag starting at the very left edge (Android back gesture zone) must not close the keyboard
+adb shell input swipe 3 $(( $2+120 )) 500 $(( $2+120 )) 400; sleep 0.6
+alive || echo "::error::keyboard closed by an edge drag on the trackpad"
 adb shell input swipe $(( $1+300 )) $(( $2+60 )) $(( $1+300 )) $(( $2-40 )) 400; sleep 0.4
 tap PANELABC; sleep 0.6; keys
 
@@ -89,5 +108,5 @@ for d in 60 140 240 340 450; do adb shell input motionevent MOVE $x $(( y-d )); 
 adb shell input motionevent UP $x $(( y-450 )); sleep 1.2; shot 09-after-swipe-up
 adb logcat -d > ci-out/logcat2.txt
 adb logcat -d -s AmpyDeckKeys:I | grep -aE "swipe|SWIPE|requestHide|TOUCH" | tail -8 | while IFS= read -r l; do echo "::warning::$l"; done
-if adb shell dumpsys input_method | grep -q "mInputShown=true"; then echo "::error::swipe up did not hide the keyboard"; fail=1; fi
+if adb shell dumpsys input_method | grep -qE "mInputShown=true|mIsInputViewShown=true|mDecorViewVisible=true"; then echo "::error::swipe up did not hide the keyboard"; fail=1; fi
 exit $fail

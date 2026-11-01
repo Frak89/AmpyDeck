@@ -39,7 +39,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
     private final ArrayList<String> clips=new ArrayList<>();private ClipboardManager cm;
     private boolean prefsDirty;
     private HandlerThread worker;private Handler bg;private final Handler ui=new Handler(Looper.getMainLooper());
-    private int suggestSeq=0;private List<String> flowAlternates=null;
+    private int suggestSeq=0;private volatile String cachedTyped,cachedCorr;private List<String> flowAlternates=null;
 
     private final ClipboardManager.OnPrimaryClipChangedListener clipListener=()->{
         try{
@@ -80,9 +80,27 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
     }
 
     @Override public View onCreateInputView(){
-        root=new DeckRoot(this,new SafeListener(this));kv=root.kv;kv.setClips(clips);prefsDirty=false;return root;
+        root=new DeckRoot(this,new SafeListener(this));kv=root.kv;kv.setClips(clips);prefsDirty=false;
+        hideSystemImeBar();
+        return root;
     }
     @Override public boolean onEvaluateFullscreenMode(){return false;}
+
+    /**
+     * Android 16+: hide the system-drawn IME bar (the "v" back chevron and the keyboard-switch globe)
+     * and draw our own strip with the AmpyDeck settings button in its place.
+     */
+    private void hideSystemImeBar(){
+        boolean ok=false;
+        if(Build.VERSION.SDK_INT>=36){
+            try{Window w=getWindow().getWindow();
+                if(w!=null){w.getInsetsController().hide(android.view.WindowInsets.Type.captionBar());ok=true;}}
+            catch(Throwable t){CrashLog.log("hideCaptionBar",t);}
+        }
+        if(root!=null)root.setStrip(ok,()->{try{startActivity(new Intent(this,SettingsActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}catch(Throwable ignored){}});
+    }
+    /** The system delegates the IME switcher to us when its bar is hidden: it lives in the ⧉ toolbar (⌨ TASTIERE). */
+    @Override public void onCustomImeSwitcherButtonRequestedVisible(boolean visible){}
 
     @Override public void onStartInputView(EditorInfo info,boolean restarting){
         super.onStartInputView(info,restarting);
@@ -116,6 +134,8 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
             root.setRunning(true);
         }
         updateWindowColors();
+        hideSystemImeBar();
+        editWord=null;
         refreshSuggestions();
     }
     @Override public void onWindowShown(){super.onWindowShown();try{if(root!=null){root.setRunning(true);root.playEntry();root.scheduleFit();}}catch(Throwable t){CrashLog.log("windowShown",t);}}
@@ -178,9 +198,21 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
     }
 
     // ------------------------------------------------------------------ suggestions
+    private String editWord;private int editStart,editEnd;
     private void refreshSuggestions(){
         if(kv==null)return;
         if(!predict){kv.setSuggestions("","","",false);return;}
+        if(editWord!=null&&composing.length()==0){
+            final String w=editWord;final int seq=++suggestSeq;
+            bg.post(CrashLog.safe("editSuggest",()->{
+                Dictionary d=dict;String corr=d.correction(w,null);List<String> l=d.suggest(w,null,4);
+                ArrayList<String> alt=new ArrayList<>();
+                if(corr!=null)alt.add(corr);for(String x:l)if(!x.equals(w)&&!alt.contains(x))alt.add(x);
+                String a=alt.size()>1?alt.get(1):"",b=alt.size()>0?alt.get(0):w,c=alt.size()>2?alt.get(2):"";
+                ui.post(CrashLog.safe("editSuggest-ui",()->{if(seq==suggestSeq&&kv!=null)kv.setSuggestions(a,b,c,corr!=null);}));
+            }));
+            return;
+        }
         if(flowComposing&&flowAlternates!=null){
             List<String> a=flowAlternates;String cur=composing.toString();
             ArrayList<String> rest=new ArrayList<>();for(String s:a)if(!s.equalsIgnoreCase(cur))rest.add(s);
@@ -192,6 +224,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
             Dictionary d=dict;
             List<String> list=d.suggest(typed,prev,5);
             String corr=ac&&!typed.isEmpty()?d.correction(typed,prev):null;
+            cachedTyped=typed;cachedCorr=corr;
             String[] out=arrange(typed,list,corr);boolean isCorr=corr!=null;
             ui.post(CrashLog.safe("suggest-ui",()->{if(seq==suggestSeq&&kv!=null)kv.setSuggestions(out[0],out[1],out[2],isCorr);}));
         }));
@@ -217,7 +250,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
         String typed=composing.toString();String out=typed;
         if(!typed.isEmpty()){
             if(correct&&autocorrect&&!noCorrectOnce&&!flowComposing){
-                String c=dict.correction(typed,prevWord());
+                String c=typed.equals(cachedTyped)?cachedCorr:dict.correction(typed,prevWord());
                 if(c!=null&&!c.equals(typed)){out=c;undoOriginal=typed;undoReplacement=c+trailing;}else undoOriginal=null;
             }else undoOriginal=null;
             if(learn&&(out.equals(typed)||flowComposing))learnLater(out,prevWord());
@@ -232,6 +265,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
 
     private void typeLetter(String s){
         InputConnection ic=ic();if(ic==null)return;
+        editWord=null;
         if(!predict){ic.commitText(s,1);return;}
         if(flowComposing){commitWord(false,"");ic.commitText(" ",1);}   // tap after a flow word starts a new word
         if(composing.length()==0){
@@ -373,6 +407,12 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
     @Override public void onPick(int slot){
         InputConnection ic=ic();if(ic==null)return;
         String s=kv.suggestion(slot);if(s.isEmpty())return;
+        if(editWord!=null&&composing.length()==0){   // replace the tapped word
+            String w=Dictionary.matchCase(editWord,s.replace("\"",""));
+            ic.beginBatchEdit();ic.setComposingRegion(editStart,editEnd);ic.commitText(w,1);ic.endBatchEdit();
+            if(learn)learnLater(w,null);
+            editWord=null;afterInput();return;
+        }
         if(s.length()>1&&s.startsWith("\"")&&s.endsWith("\""))s=s.substring(1,s.length()-1);
         ic.beginBatchEdit();
         String prev=prevWord();
@@ -401,6 +441,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
             case "bg":{int i=(Arrays.asList(Prefs.BG).indexOf(pr.background())+1)%Prefs.BG.length;pr.put("background",Prefs.BG[i]);
                 syncPrefs();Ui.toast(this,Prefs.BG_NAMES[i]);break;}
             case "replay":root.playEntry();break;
+            case "switch":onSpaceLongPress();break;
             case "selectall":case "copy":case "paste":{
                 InputConnection ic=ic();if(ic==null)break;
                 if(composing.length()>0){ic.finishComposingText();composing.setLength(0);flowComposing=false;}
@@ -414,6 +455,10 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
         if(imm!=null)imm.showInputMethodPicker();
     }
     @Override public void onShiftChanged(){}
+    @Override public float letterWeight(String letter){
+        if(!predict)return 0;
+        Dictionary d=dict;return d.prefixWeight(composing.toString()+letter.toLowerCase(Locale.ROOT));
+    }
     @Override public void onClip(String text){
         InputConnection ic=ic();if(ic==null)return;
         if(composing.length()>0)commitWord(false,"");
@@ -436,8 +481,21 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
             undoOriginal=null;autoSpaced=false;updateShift();refreshSuggestions();
         }else if(composing.length()==0&&(nss!=ose||nse!=ose)&&cs==-1){
             if(Math.abs(nss-oss)>1||nss!=nse){undoOriginal=null;autoSpaced=false;}
+            editWord=null;
+            if(nss==nse&&Math.abs(nss-oss)>1&&predict)findEditWord(nss);
             updateShift();refreshSuggestions();
         }
+    }
+
+    /** Cursor placed inside / at the end of a word (e.g. a red-underlined one): offer fixes for it. */
+    private void findEditWord(int cur){
+        InputConnection ic=ic();if(ic==null)return;
+        CharSequence b=ic.getTextBeforeCursor(40,0),a=ic.getTextAfterCursor(40,0);if(b==null||a==null)return;
+        int i=b.length();while(i>0&&wordChar(b.charAt(i-1)))i--;
+        int j=0;while(j<a.length()&&wordChar(a.charAt(j)))j++;
+        String w=b.subSequence(i,b.length()).toString()+a.subSequence(0,j);
+        if(w.length()<2)return;
+        editWord=w;editStart=cur-(b.length()-i);editEnd=cur+j;
     }
 
     static boolean isEnabled(Context c){

@@ -12,9 +12,11 @@ import java.util.*;
  * (bigrams) are learnt while typing and stored privately in the app's files dir.
  */
 public final class Dictionary {
+    /** Below this (Zipf×10) a listed word is considered rare: still valid, but autocorrect may override it. */
+    public static final int WEAK=28;
     private static Dictionary inst;private static String instLang;
 
-    public String[] words=new String[0],norm=new String[0];public int[] freq=new int[0];
+    public volatile String[] words=new String[0],norm=new String[0];public volatile int[] freq=new int[0];
     private final HashMap<String,Integer> index=new HashMap<>();        // exact word -> idx
     private final HashMap<String,Integer> normBest=new HashMap<>();     // normalized -> best idx
     private final HashMap<String,Integer> user=new HashMap<>();         // learnt word -> count
@@ -79,7 +81,14 @@ public final class Dictionary {
         for(int i=0;i<ord.length;i++){W[i]=w[ord[i]];N[i]=n[ord[i]];F[i]=m.get(W[i]);index.put(W[i],i);
             Integer b=normBest.get(N[i]);if(b==null||F[b]<F[i])normBest.put(N[i],i);}
         words=W;norm=N;freq=F;
+        HashMap<Integer,ArrayList<Integer>> bk=new HashMap<>();
+        for(int i=0;i<N.length;i++){String nn=N[i];if(nn.isEmpty())continue;bk.computeIfAbsent(bucketKey(nn.charAt(0),nn.length()),k->new ArrayList<>()).add(i);}
+        HashMap<Integer,int[]> b2=new HashMap<>();
+        for(Map.Entry<Integer,ArrayList<Integer>> e:bk.entrySet()){ArrayList<Integer> l=e.getValue();int[] a=new int[l.size()];for(int j=0;j<a.length;j++)a[j]=l.get(j);b2.put(e.getKey(),a);}
+        buckets=b2;
     }
+    private HashMap<Integer,int[]> buckets=new HashMap<>();
+    private static int bucketKey(char c,int len){return (c<<8)|Math.min(len,255);}
 
     // ------------------------------------------------------------------ text helpers
     public static String normalize(String s){
@@ -114,6 +123,14 @@ public final class Dictionary {
     }
     public synchronized boolean hasPrefix(String p){
         String n=normalize(p);int i=lower(n);return i<norm.length&&norm[i].startsWith(n);
+    }
+    /** Lock-free: best frequency among words starting with this prefix (0 if none). Used for tap precision. */
+    public float prefixWeight(String prefix){
+        String[] N=norm;int[] F=freq;if(!ready||N.length!=F.length||prefix.isEmpty())return 0;
+        String p=normalize(prefix);int lo=0,hi=N.length;
+        while(lo<hi){int mid=(lo+hi)>>>1;if(N[mid].compareTo(p)<0)lo=mid+1;else hi=mid;}
+        int best=0;for(int k=lo;k<N.length&&k<lo+400&&N[k].startsWith(p);k++)if(F[k]>best)best=F[k];
+        return best;
     }
     private int lower(String n){int lo=0,hi=norm.length;while(lo<hi){int mid=(lo+hi)>>>1;if(norm[mid].compareTo(n)<0)lo=mid+1;else hi=mid;}return lo;}
 
@@ -194,17 +211,27 @@ public final class Dictionary {
             Integer own=index.get(typed.toLowerCase(Locale.ROOT));
             if(own==null&&!user.containsKey(typed)||own!=null&&freq[exact]>=freq[own]+8&&!user.containsKey(typed))return matchCase(typed,words[exact]);
         }
-        if(known(typed))return null;
-        float max=n.length()<=3?1f:n.length()<=6?1.6f:2.2f;
+        // weak words (rare forms, common typos that slipped into the frequency lists) can still be corrected
+        Integer own=index.get(typed);if(own==null)own=index.get(typed.toLowerCase(Locale.ROOT));
+        boolean isUser=user.containsKey(typed)||user.containsKey(typed.toLowerCase(Locale.ROOT));
+        if(isUser||own!=null&&freq[own]>=WEAK)return null;
+        int ownF=own==null?-1:freq[own];
+        float max=own!=null?1.05f:n.length()<=3?1f:n.length()<=6?1.6f:2.2f;
         int best=-1;float bestScore=Float.MAX_VALUE;
-        for(int i=0;i<norm.length;i++){
-            String w=norm[i];if(Math.abs(w.length()-n.length())>2)continue;
-            char f=w.charAt(0);if(f!=n.charAt(0)&&subCost(f,n.charAt(0))>.6f)continue;
-            float d=distance(n,w,max);if(d>max)continue;
-            float s=d*320-score(i,prev);
-            if(f!=n.charAt(0))s+=120;
-            if(s<bestScore){bestScore=s;best=i;}
+        char c0=n.charAt(0);
+        for(int ci=0;ci<128;ci++){
+            char f=(char)ci;if(f!=c0&&subCost(f,c0)>.6f)continue;
+            for(int len=Math.max(1,n.length()-2);len<=n.length()+2;len++){
+                int[] b=buckets.get(bucketKey(f,len));if(b==null)continue;
+                for(int i:b){
+                    String w=norm[i];if(own!=null&&i==own)continue;
+                    float d=distance(n,w,max);if(d>max)continue;
+                    float sc=d*320-score(i,prev);if(f!=c0)sc+=120;
+                    if(sc<bestScore){bestScore=sc;best=i;}
+                }
+            }
         }
+        if(best>=0&&own!=null&&freq[best]<ownF+15)return null;
         if(best<0)return null;
         if(freq[best]<30&&!user.containsKey(words[best]))return null;
         return matchCase(typed,words[best]);

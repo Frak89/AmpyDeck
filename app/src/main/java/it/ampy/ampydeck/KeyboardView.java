@@ -32,6 +32,8 @@ public final class KeyboardView extends View {
         void onClearClips();
         void onPageChanged(int page);
         void onMove(int keyCode,boolean select);
+        /** How likely the word being typed continues with this letter (0 = unknown). */
+        float letterWeight(String letter);
     }
 
     private static final Random R=new Random();
@@ -96,6 +98,7 @@ public final class KeyboardView extends View {
     }
 
     private boolean panelPage(){return page==Layouts.EMOJIS||page==Layouts.CLIP||page==Layouts.TRACKPAD;}
+    public boolean gestureActive(){return activeId!=-1;}
     // ------------------------------------------------------------------ public API
     public int page(){return page;}
     public void setPage(int pg){
@@ -122,6 +125,52 @@ public final class KeyboardView extends View {
         postInvalidateOnAnimation();
     }
 
+    // ------------------------------------------------------------------ assembly entry animations
+    private String asmMode=null;private long asmStart,asmDur;private float[] asmX,asmY,asmR,asmD;
+    /** Keys fly in and lock together: "tiles" (tessere da ogni lato), "drop" (cadono e rimbalzano), "wave" (onda che sboccia). */
+    public void startAssemble(String mode,long dur){
+        int n=keys.size();asmX=new float[n];asmY=new float[n];asmR=new float[n];asmD=new float[n];
+        float W=Math.max(1,getWidth()),H=Math.max(1,getHeight());
+        for(Layouts.Key k:keys){int i=k.index;
+            float fx=k.r.centerX()/W,fy=(k.r.centerY()-barH)/Math.max(1,H-barH);
+            switch(mode){
+                case "drop":asmX[i]=0;asmY[i]=-(k.r.bottom+Ui.dpf(20)+R.nextFloat()*H*.3f);asmR[i]=(R.nextFloat()-.5f)*14;asmD[i]=fx*.35f+(1-fy)*.15f+R.nextFloat()*.08f;break;
+                case "wave":{float dx=fx-.5f,dy=fy-1f;asmD[i]=(float)Math.sqrt(dx*dx+dy*dy)*.55f;asmX[i]=0;asmY[i]=0;asmR[i]=0;break;}
+                default:{double a=R.nextDouble()*Math.PI*2;float dist=Math.max(W,H)*(.6f+R.nextFloat()*.5f);
+                    asmX[i]=(float)Math.cos(a)*dist;asmY[i]=(float)Math.sin(a)*dist;asmR[i]=(R.nextFloat()-.5f)*540;asmD[i]=R.nextFloat()*.45f;}
+            }
+        }
+        asmMode=mode;asmStart=SystemClock.uptimeMillis();asmDur=Math.max(300,dur);
+        decodeUntil=0;postInvalidateOnAnimation();
+    }
+    private static float backOut(float t){float c1=1.70158f,c3=c1+1;return 1+c3*(float)Math.pow(t-1,3)+c1*(float)Math.pow(t-1,2);}
+    private static float bounceOut(float t){
+        float n1=7.5625f,d1=2.75f;
+        if(t<1/d1)return n1*t*t;if(t<2/d1){t-=1.5f/d1;return n1*t*t+.75f;}
+        if(t<2.5/d1){t-=2.25f/d1;return n1*t*t+.9375f;}t-=2.625f/d1;return n1*t*t+.984375f;
+    }
+    /** Draws one key through the assembly transform; returns false when nothing was drawn. */
+    private boolean drawAssembled(Canvas c,Layouts.Key k,long now){
+        float span=.55f;float t=((now-asmStart)/(float)asmDur-asmD[k.index])/span;
+        if(t<=0)return true;
+        if(t>=1){drawKey(c,k,now,false);return true;}
+        float cx=k.r.centerX(),cy=k.r.centerY();int sc=c.save();
+        switch(asmMode){
+            case "drop":{float e=bounceOut(t);c.translate(0,asmY[k.index]*(1-e));c.rotate(asmR[k.index]*(1-e),cx,cy);break;}
+            case "wave":{float e=backOut(t);c.scale(Math.max(.01f,e),Math.max(.01f,e),cx,cy);break;}
+            default:{float e=backOut(t);float m=1-Math.min(1,e);float m2=1-t;
+                c.translate(asmX[k.index]*m2*m2,asmY[k.index]*m2*m2);c.rotate(asmR[k.index]*m,cx,cy);
+                float s2=.4f+.6f*Math.min(1.05f,e);c.scale(s2,s2,cx,cy);}
+        }
+        int a=(int)(255*Math.min(1,t*2.2f));
+        int layer=c.saveLayerAlpha(k.r.left-Ui.dpf(6),k.r.top-Ui.dpf(6),k.r.right+Ui.dpf(6),k.r.bottom+Ui.dpf(6),a);
+        drawKey(c,k,now,false);
+        c.restoreToCount(layer);c.restoreToCount(sc);
+        // snap flash when the tile locks in
+        if(t>.85f){p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(Ui.dpf(2));p.setColor(Theme.a(th.accent,(int)(255*(1-t)/.15f*.8f)));c.drawPath(k.path,p);p.setStyle(Paint.Style.FILL);}
+        return true;
+    }
+
     // ------------------------------------------------------------------ layout
     private void buildRows(){
         int pg=panelPage()?Layouts.LETTERS:page;
@@ -138,7 +187,14 @@ public final class KeyboardView extends View {
         setMeasuredDimension(w,(int)(barH+areaH+bottomPad));
     }
     @Override protected void onSizeChanged(int w,int h,int ow,int oh){layoutKeys();}
-    @Override protected void onLayout(boolean changed,int l,int t,int r,int b){layoutKeys();}
+    @Override protected void onLayout(boolean changed,int l,int t,int r,int b){
+        layoutKeys();
+        if(android.os.Build.VERSION.SDK_INT>=29){
+            // keep Android's edge back-gesture from stealing trackpad / flow / cursor drags
+            int h=b-t,w=r-l;int top=(int)barH;
+            setSystemGestureExclusionRects(java.util.Arrays.asList(new android.graphics.Rect(0,top,w,h)));
+        }
+    }
 
     private void layoutKeys(){
         int W=getWidth();if(W==0)return;
@@ -225,7 +281,7 @@ public final class KeyboardView extends View {
             case MotionEvent.ACTION_DOWN:case MotionEvent.ACTION_POINTER_DOWN:{
                 int i=e.getActionIndex();
                 if(activeId!=-1){ // rollover typing: the previous finger's key fires now
-                    if(downKey!=null&&!flowing&&popItems==null&&!cursorMode&&!delSwipe&&!longFired&&downKey.code!=Layouts.DEL)fire(downKey);
+                    if(downKey!=null&&!flowing&&!spacePad&&popItems==null&&!cursorMode&&!delSwipe&&!longFired&&downKey.code!=Layouts.DEL)fire(downKey==downKeyAtDown?resolveTap(downKey,downX,downY):downKey);
                     resetTouch();
                 }
                 activeId=e.getPointerId(i);down(e.getX(i),e.getY(i));return true;
@@ -244,6 +300,7 @@ public final class KeyboardView extends View {
         return true;
     }
     private void resetTouch(){
+        if(spacePad){spacePad=false;page=spacePadPrev;}
         removeCallbacks(longPress);removeCallbacks(repeatDel);
         activeId=-1;downKey=null;downKeyAtDown=null;swipeHide=false;longFired=flowing=cursorMode=delSwipe=panelDragging=inBar=inPanel=false;
         popItems=null;popSel=-1;barPressed=-1;delRepeats=0;dyAcc=0;padTouch=false;invalidate();
@@ -256,7 +313,7 @@ public final class KeyboardView extends View {
         if(panelPage()){inPanel=true;tap(0);padAx=padAy=0;invalidate();return;}
         Layouts.Key k=keyAt(x,y);if(k==null)return;press(k);
     }
-    private Layouts.Key downKeyAtDown;private boolean swipeHide;
+    private Layouts.Key downKeyAtDown;private boolean swipeHide;private boolean spacePad;private int spacePadPrev;
     private void press(Layouts.Key k){
         downKey=k;downKeyAtDown=k;swipeHide=false;tap(k.code);longFired=false;
         if(k.code==Layouts.DEL){L.onCode(Layouts.DEL);postDelayed(repeatDel,400);}
@@ -268,13 +325,14 @@ public final class KeyboardView extends View {
         float px=lastX,py=lastY;
         float dx=x-downX,dy=y-downY;lastX=x;lastY=y;
         if(inBar)return;
+        if(spacePad){padDrag(x,y,x-px,y-py);return;}
         if(inPanel&&page==Layouts.TRACKPAD){padMove(x,y,x-px,y-py);return;}
         if(inPanel){if(!panelDragging&&Math.abs(dy)>Ui.dpf(8))panelDragging=true;
             if(panelDragging){panelScroll-=y-(downY+dyAcc);dyAcc=y-downY;clampScroll();invalidate();}return;}
         if(downKey==null)return;
         if(popItems!=null){popSel=popIndex(x);invalidate();return;}
         // swipe up from the bottom row = hide the keyboard
-        if(!cursorMode&&!flowing&&rows.size()>0&&rows.get(rows.size()-1).keys.contains(downKeyAtDown)){
+        if(!cursorMode&&!flowing&&!longFired&&rows.size()>0&&rows.get(rows.size()-1).keys.contains(downKeyAtDown)){
             float rowH=rowBot[rows.size()-1]-rowTop[rows.size()-1];
             boolean up=-dy>rowH*1.7f&&-dy>Math.abs(dx)*1.6f;
             if(up!=swipeHide){swipeHide=up;removeCallbacks(longPress);invalidate();}
@@ -293,7 +351,7 @@ public final class KeyboardView extends View {
             return;
         }
         if(flowOn&&page==Layouts.LETTERS&&downKey.letter()&&!longFired){
-            if(!flowing&&Math.hypot(dx,dy)>unitW*.6f){flowing=true;removeCallbacks(longPress);flowPath.clear();
+            if(!flowing&&Math.hypot(dx,dy)>unitW*.85f){flowing=true;removeCallbacks(longPress);flowPath.clear();
                 flowPath.add(new PointF(downX,downY));trail.add(new float[]{downX,downY,SystemClock.uptimeMillis()});}
             if(flowing){PointF last=flowPath.get(flowPath.size()-1);
                 if(Math.hypot(x-last.x,y-last.y)>Ui.dpf(2.5f)){flowPath.add(new PointF(x,y));
@@ -305,7 +363,8 @@ public final class KeyboardView extends View {
         }
         // finger slides to another key (flow off / symbols)
         Layouts.Key k=keyAt(x,y);
-        if(k!=null&&k!=downKey&&!longFired&&downKey.code!=Layouts.DEL){
+        if(k!=null&&k!=downKey&&!longFired&&downKey.code!=Layouts.DEL&&k.r.contains(x,y)
+            &&Math.abs(x-k.r.centerX())<k.r.width()*.35f){
             removeCallbacks(longPress);downKey=k;
             if(k.code==Layouts.SPACE||(k.popup!=null&&k.popup.length>0))postDelayed(longPress,330);
             invalidate();
@@ -314,17 +373,44 @@ public final class KeyboardView extends View {
     private float dyAcc=0;
     private void up(float x,float y){
         removeCallbacks(longPress);removeCallbacks(repeatDel);
+        if(spacePad){spacePad=false;page=spacePadPrev;padTouch=false;padSelect=false;trail.clear();invalidate();return;}
         if(inBar){barUp(x);dyAcc=0;return;}
         if(inPanel){if(!panelDragging)panelTap(x,y);dyAcc=0;return;}
         if(downKey==null)return;
         if(swipeHide){L.onToolbar("hide");return;}
         if(popItems!=null){if(popSel>=0&&popSel<popItems.length){L.onText(popItems[popSel]);if(shift==1){shift=0;L.onShiftChanged();}}return;}
-        if(flowing){flowPath.add(new PointF(x,y));L.onFlow(new ArrayList<>(flowPath),keyCenters(),unitW);
+        if(flowing){flowPath.add(new PointF(x,y));
+            float len=0;for(int i=1;i<flowPath.size();i++)len+=Math.hypot(flowPath.get(i).x-flowPath.get(i-1).x,flowPath.get(i).y-flowPath.get(i-1).y);
+            Layouts.Key end=keyAt(x,y);
+            if(len<unitW*1.25f||(end==downKeyAtDown&&len<unitW*2f)){fire(resolveTap(downKeyAtDown,downX,downY));trail.clear();return;}  // sloppy tap, not a word
+            L.onFlow(new ArrayList<>(flowPath),keyCenters(),unitW);
             if(shift==1){shift=0;}return;}
         if(cursorMode||longFired)return;
         if(delSwipe){L.onDeleteWord();return;}
         if(downKey.code==Layouts.DEL)return;
-        fire(downKey);
+        fire(downKey==downKeyAtDown?resolveTap(downKey,downX,downY):downKey);
+    }
+
+    /**
+     * Precision: a tap is scored against every nearby letter key with a Gaussian touch model
+     * (fingers land a little low) plus the dictionary's opinion of the next letter, so taps on
+     * the border between two keys pick the one that makes a word.
+     */
+    private Layouts.Key resolveTap(Layouts.Key k,float x,float y){
+        if(k==null||!k.letter()||page!=Layouts.LETTERS)return k;
+        float yb=y-k.r.height()*.08f;
+        float sx=k.r.width()*.48f,sy=k.r.height()*.52f;
+        Layouts.Key best=k;double bestS=-1e9;
+        for(Layouts.Key o:keys){
+            if(!o.letter())continue;
+            float dx=(x-o.r.centerX())/sx,dy=(yb-o.r.centerY())/sy;
+            double d2=dx*dx+dy*dy;if(d2>4)continue;
+            double sc=-d2;
+            float lw=L.letterWeight(o.text);
+            sc+=Math.log(1+lw)*.35;
+            if(sc>bestS){bestS=sc;best=o;}
+        }
+        return best;
     }
 
     private void fire(Layouts.Key k){
@@ -354,7 +440,8 @@ public final class KeyboardView extends View {
             if(haptics)performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);L.onForget(barPressed-1);barPressed=-1;invalidate();}return;}
         Layouts.Key k=downKey;if(k==null)return;
         if(k.code==Layouts.SYM){longFired=true;if(haptics)performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);setPage(Layouts.TRACKPAD);return;}
-        if(k.code==Layouts.SPACE){longFired=true;if(haptics)performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);L.onSpaceLongPress();return;}
+        if(k.code==Layouts.SPACE){longFired=true;if(haptics)performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+            spacePad=true;spacePadPrev=page;padAx=padAy=0;padTouch=true;page=Layouts.TRACKPAD;invalidate();return;}
         if(k.popup==null||k.popup.length==0)return;
         longFired=true;if(haptics)performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
         if(k.popup.length==1){L.onText(k.popup[0]);return;}
@@ -371,9 +458,9 @@ public final class KeyboardView extends View {
     private int popIndex(float x){if(popItems==null)return -1;int i=(int)((x-popRect.left)/popCell);return Math.max(0,Math.min(popItems.length-1,i));}
 
     // ------------------------------------------------------------------ bar
-    private static final String[] TOOLS={"settings","emoji","clip","theme","bg","replay","hide"};
-    private static final String[] TOOL_ICONS={"⚙","☺","⎘","◐","▦","✦","⌄"};
-    private static final String[] TOOL_NAMES={"SETUP","EMOJI","CLIP","TEMA","SFONDO","FX","CHIUDI"};
+    private static final String[] TOOLS={"settings","emoji","clip","theme","bg","replay","switch","hide"};
+    private static final String[] TOOL_ICONS={"⚙","☺","⎘","◐","▦","✦","⌨","⌄"};
+    private static final String[] TOOL_NAMES={"SETUP","EMOJI","CLIP","TEMA","SFONDO","FX","TASTIERE","CHIUDI"};
     /** 0 = toolbar toggle, 1..3 = slots, 4 = hide; in toolbar mode 10+i = tool i. */
     private int barSlot(float x){
         float W=getWidth();
@@ -410,6 +497,9 @@ public final class KeyboardView extends View {
         if(downY>=panelBottomRowTop())return;
         if(!panelDragging&&Math.hypot(x-downX,y-downY)>Ui.dpf(4))panelDragging=true;
         if(!panelDragging)return;
+        padDrag(x,y,ddx,ddy);
+    }
+    private void padDrag(float x,float y,float ddx,float ddy){
         padTouch=true;
         float speed=(float)Math.hypot(ddx,ddy);float accel=speed>Ui.dpf(14)?2.2f:speed>Ui.dpf(7)?1.5f:1f;
         padAx+=ddx*accel;padAy+=ddy*accel;
@@ -464,7 +554,10 @@ public final class KeyboardView extends View {
         if(panelPage())drawPanel(c);
         else{
             boolean decoding=now<decodeUntil;anim|=decoding;
-            for(Layouts.Key k:keys)drawKey(c,k,now,decoding);
+            boolean asm=asmMode!=null&&asmX!=null&&asmX.length==keys.size()&&now-asmStart<asmDur*1.05f;
+            if(asmMode!=null&&!asm)asmMode=null;
+            anim|=asm;
+            for(Layouts.Key k:keys){if(asm)drawAssembled(c,k,now);else drawKey(c,k,now,decoding);}
             if(downKey!=null&&preview&&popItems==null&&!flowing&&!cursorMode&&!downKey.special&&!longFired)drawPreview(c,downKey);
             if(popItems!=null)drawPopup(c);
             if(swipeHide)drawHideHint(c);
@@ -752,7 +845,7 @@ public final class KeyboardView extends View {
             tp.setTextSize(Ui.dpf(13));tp.setColor(Theme.a(th.fg,170));
             c.drawText(padSelect?"◧ SELEZIONE ATTIVA":"⌖ TRACKPAD",tr.centerX(),tr.centerY()-Ui.dpf(4),tp);
             tp.setTypeface(Ui.MONO);tp.setTextSize(Ui.dpf(10.5f));tp.setColor(th.muted);
-            c.drawText("trascina: ◀ ▶ lettere · ▲ ▼ righe",tr.centerX(),tr.centerY()+Ui.dpf(14),tp);
+            c.drawText(spacePad?"muovi il dito · rilascia per tornare":"trascina: ◀ ▶ lettere · ▲ ▼ righe",tr.centerX(),tr.centerY()+Ui.dpf(14),tp);
         }else{
             float r=Ui.dpf(16);p.setColor(Theme.a(padSelect?th.warn:th.accent,50));c.drawCircle(lastX,lastY,r*1.8f,p);
             p.setColor(Theme.a(padSelect?th.warn:th.accent,140));c.drawCircle(lastX,lastY,r,p);

@@ -72,7 +72,7 @@ public final class DeckRoot extends FrameLayout {
     /** Height is the key surface's (+ nav bar); the background just fills it (never the whole screen). */
     @Override protected void onMeasure(int ws,int hs){
         kv.measure(ws,MeasureSpec.makeMeasureSpec(0,MeasureSpec.UNSPECIFIED));
-        int w=MeasureSpec.getSize(ws),h=kv.getMeasuredHeight()+navPad;
+        int w=MeasureSpec.getSize(ws),h=kv.getMeasuredHeight()+Math.max(navPad,stripH());
         bg.measure(MeasureSpec.makeMeasureSpec(w,MeasureSpec.EXACTLY),MeasureSpec.makeMeasureSpec(h,MeasureSpec.EXACTLY));
         setMeasuredDimension(w,h);
     }
@@ -83,17 +83,65 @@ public final class DeckRoot extends FrameLayout {
     }
     public void setRunning(boolean r){bg.setRunning(r);}
 
+    private String playing="glitchgenie";
+    private static final String[] RANDOM_POOL={"glitchgenie","genie","glitch","tiles","drop","wave","crt"};
     /** Plays the configured entry animation (called each time the keyboard window appears). */
     public void playEntry(){
-        if("none".equals(mode)){kv.startDecode(0);return;}
-        entering=true;start=SystemClock.uptimeMillis();
-        if(!"genie".equals(mode))kv.startDecode((long)(dur*.9f));
+        String m=mode;if("random".equals(m))m=RANDOM_POOL[R.nextInt(RANDOM_POOL.length)];
+        playing=m;
+        if("none".equals(m)){kv.startDecode(0);return;}
         bg.pulse();
+        if("tiles".equals(m)||"drop".equals(m)||"wave".equals(m)){kv.startAssemble(m,(long)(dur*1.35f));return;}
+        entering=true;start=SystemClock.uptimeMillis();
+        if(!"genie".equals(m)&&!"crt".equals(m))kv.startDecode((long)(dur*.9f));
         invalidate();
     }
 
+    // ---------------------------------------------------------------- bottom strip (Android 16+)
+    // The system bar with "v" and the keyboard-switch globe is hidden; this strip takes its place
+    // and carries the AmpyDeck settings button.
+    private boolean stripOn;private Runnable onSettings;private boolean stripPressed;
+    public void setStrip(boolean on,Runnable settings){stripOn=on;onSettings=settings;requestLayout();invalidate();}
+    private int stripH(){
+        if(!stripOn)return 0;
+        android.view.WindowInsets wi=getRootWindowInsets();int nav=0;
+        if(wi!=null&&android.os.Build.VERSION.SDK_INT>=30)nav=Math.max(wi.getInsets(android.view.WindowInsets.Type.navigationBars()).bottom,
+            wi.getInsets(android.view.WindowInsets.Type.tappableElement()).bottom);
+        return Math.max(nav,Ui.dp(34));
+    }
+    @Override public android.view.WindowInsets onApplyWindowInsets(android.view.WindowInsets in){post(this::requestLayout);return super.onApplyWindowInsets(in);}
+    private final RectF gear=new RectF();
+    private void drawStrip(Canvas c){
+        int sh=getHeight()-kv.getBottom();if(!stripOn||sh<=Ui.dp(8))return;
+        float top=kv.getBottom(),cy=top+sh/2f;
+        float bh=Math.min(Ui.dpf(30),sh-Ui.dpf(6));
+        gear.set(Ui.dpf(8),cy-bh/2,Ui.dpf(8)+bh*3.9f,cy+bh/2);
+        ep.setStyle(Paint.Style.FILL);ep.setColor(Theme.a(th.secondary,stripPressed?120:38));
+        Path pth=new Path();float k=Ui.dpf(5);
+        pth.moveTo(gear.left+k,gear.top);pth.lineTo(gear.right,gear.top);pth.lineTo(gear.right,gear.bottom-k);pth.lineTo(gear.right-k,gear.bottom);
+        pth.lineTo(gear.left,gear.bottom);pth.lineTo(gear.left,gear.top+k);pth.close();
+        c.drawPath(pth,ep);
+        ep.setStyle(Paint.Style.STROKE);ep.setStrokeWidth(Ui.dpf(1.2f));ep.setColor(Theme.a(th.secondary,200));c.drawPath(pth,ep);
+        Paint tp=new Paint(Paint.ANTI_ALIAS_FLAG);tp.setTypeface(Ui.MONO_BOLD);tp.setTextSize(bh*.42f);tp.setColor(th.fg);
+        Paint.FontMetrics fm=tp.getFontMetrics();float ty=cy-(fm.ascent+fm.descent)/2f;
+        tp.setColor(th.accent);tp.setTextSize(bh*.6f);fm=tp.getFontMetrics();c.drawText("⚙",gear.left+bh*.25f,cy-(fm.ascent+fm.descent)/2f,tp);
+        tp.setTextSize(bh*.36f);tp.setColor(th.fg);fm=tp.getFontMetrics();c.drawText("SETUP",gear.left+bh*1.15f,cy-(fm.ascent+fm.descent)/2f,tp);
+    }
+    @Override public boolean onTouchEvent(android.view.MotionEvent e){
+        if(!stripOn)return false;
+        float y=e.getY(),x=e.getX();
+        if(y<kv.getBottom())return false;
+        switch(e.getActionMasked()){
+            case android.view.MotionEvent.ACTION_DOWN:stripPressed=gear.contains(x,y)||x<gear.right+Ui.dpf(10);invalidate();return true;
+            case android.view.MotionEvent.ACTION_UP:if(stripPressed&&onSettings!=null){performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);onSettings.run();}
+                stripPressed=false;invalidate();return true;
+            case android.view.MotionEvent.ACTION_CANCEL:stripPressed=false;invalidate();return true;
+        }
+        return true;
+    }
+
     @Override protected void dispatchDraw(Canvas c){
-        if(!entering){super.dispatchDraw(c);return;}
+        if(!entering){super.dispatchDraw(c);try{drawStrip(c);}catch(Throwable t){CrashLog.log("strip",t);}return;}
         try{entryDraw(c);}catch(Throwable t){CrashLog.log("entryFx",t);entering=false;super.dispatchDraw(c);}
     }
     private void entryDraw(Canvas c){
@@ -107,7 +155,8 @@ public final class DeckRoot extends FrameLayout {
         for(int i=0;i<getChildCount();i++){View v=getChildAt(i);if(v.getVisibility()!=VISIBLE)continue;
             bufCanvas.save();bufCanvas.translate(v.getLeft(),v.getTop());v.draw(bufCanvas);bufCanvas.restore();}
 
-        boolean genie=!"glitch".equals(mode),glitch=!"genie".equals(mode);
+        if("crt".equals(playing)){crt(c,w,h,t);postInvalidateOnAnimation();return;}
+        boolean genie=!"glitch".equals(playing),glitch=!"genie".equals(playing);
         float split=genie&&glitch?.58f:genie?1f:0f;   // share of time spent on the genie
         if(genie&&t<split){
             float g=t/split;
@@ -144,6 +193,22 @@ public final class DeckRoot extends FrameLayout {
             }else c.drawBitmap(buf,0,0,bp);
         }
         postInvalidateOnAnimation();
+    }
+
+    /** CRT power-on: a bright line opens horizontally, then the picture unfolds vertically. */
+    private void crt(Canvas c,int w,int h,float t){
+        float cy=h*.62f;
+        if(t<.3f){float g=GenieFx.ease(t/.3f);float lw=w*g;
+            ep.setStyle(Paint.Style.FILL);ep.setColor(Theme.a(th.accent,90));c.drawRect(w/2f-lw/2,cy-Ui.dpf(6),w/2f+lw/2,cy+Ui.dpf(6),ep);
+            ep.setColor(Theme.a(0xffffffff,240));c.drawRect(w/2f-lw/2,cy-Ui.dpf(1.2f),w/2f+lw/2,cy+Ui.dpf(1.2f),ep);
+            ep.setColor(th.secondary);c.drawCircle(w/2f,cy,Ui.dpf(4)+g*Ui.dpf(3),ep);ep.setStyle(Paint.Style.STROKE);return;}
+        float g=GenieFx.ease((t-.3f)/.7f);float sy=Math.max(.01f,g);
+        c.save();c.scale(1,sy,0,cy);
+        bp.setAlpha(255);c.drawBitmap(buf,0,0,bp);
+        c.restore();
+        float flash=1-g;if(flash>0){ep.setStyle(Paint.Style.FILL);ep.setColor(Theme.a(0xffffffff,(int)(170*flash*flash)));
+            c.drawRect(0,cy-h*sy*.62f,w,cy+h*sy*.38f,ep);ep.setStyle(Paint.Style.STROKE);}
+        if(R.nextInt(3)==0)tear(c,w,h,flash,Ui.dpf(20));
     }
 
     /** Neon outline of the genie mesh (left and right edges + top edge). */
