@@ -3,6 +3,7 @@ package it.ampy.ampydeck;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.view.Gravity;
@@ -45,6 +46,13 @@ public final class SettingsActivity extends Activity {
         sv=new ScrollView(this);col.addView(sv,new LinearLayout.LayoutParams(-1,0,1));
         list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);list.setPadding(Ui.dp(14),0,Ui.dp(14),Ui.dp(40));sv.addView(list);
         setContentView(root);
+        // Android 15+ draws apps edge-to-edge: keep the deck clear of status/nav bars and the keyboard
+        col.setOnApplyWindowInsetsListener((v,ins)->{
+            int top,bottom;
+            if(Build.VERSION.SDK_INT>=30){android.graphics.Insets bars=ins.getInsets(android.view.WindowInsets.Type.systemBars()|android.view.WindowInsets.Type.displayCutout()),
+                ime=ins.getInsets(android.view.WindowInsets.Type.ime());top=bars.top;bottom=Math.max(bars.bottom,ime.bottom);}
+            else{top=ins.getSystemWindowInsetTop();bottom=ins.getSystemWindowInsetBottom();}
+            v.setPadding(0,top,0,bottom);return ins;});
 
         section("00 / ATTIVAZIONE");
         boolean en=AmpyDeckIME.isEnabled(this),cur=AmpyDeckIME.isCurrent(this);

@@ -50,7 +50,10 @@ alive(){ adb shell pidof $PKG:ime >/dev/null || return 1
   adb shell dumpsys input_method | grep -iE "shown|visible" | head -6 | while IFS= read -r l; do echo "::warning::IMS $l"; done; return 1; }
 
 sleep 4; keys; sleep 1; keys
-grep -q "K SPACE" ci-out/keys.txt || { echo "::error::keyboard never opened"; adb exec-out screencap -p > ci-out/00-noopen.png; exit 1; }
+grep -q "K SPACE" ci-out/keys.txt || { echo "::error::keyboard never opened"; adb exec-out screencap -p > ci-out/00-noopen.png
+  adb logcat -d > ci-out/logcat.txt; adb shell dumpsys input_method > ci-out/ims.txt
+  grep -aE "AmpyDeck|FATAL|AndroidRuntime|ampydeck" ci-out/logcat.txt | grep -v AmpyDeckKeys | tail -25 | while IFS= read -r l; do echo "::warning::$l"; done
+  exit 1; }
 grep -a FIT ci-out/keys.txt | while IFS= read -r l; do echo "::warning::$l"; done
 grep GEOM ci-out/keys.txt | tail -2 | while IFS= read -r l; do echo "::warning::$l"; done
 adb shell dumpsys window windows | grep -A3 "InputMethod" | head -20 | while IFS= read -r l; do echo "::warning::WIN $l"; done
