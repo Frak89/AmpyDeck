@@ -17,7 +17,7 @@ public final class SettingsActivity extends Activity {
     private Prefs pr;private Theme th;private LinearLayout list;private ScrollView sv;
 
     @Override protected void onCreate(Bundle b){super.onCreate(b);CrashLog.install(this);pr=Prefs.get(this);build();
-        if(getIntent().getBooleanExtra("smoke",false)){focusTest();spellProbe();}}
+        if(getIntent().getBooleanExtra("smoke",false)){focusTest();spellProbe();list.postDelayed(this::spellProbe,15000);}}
     /** CI diagnostics: ask the system spell checker directly and log what answers. */
     private void spellProbe(){
         try{

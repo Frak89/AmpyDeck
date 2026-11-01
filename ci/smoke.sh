@@ -25,6 +25,8 @@ anr(){ adb shell uiautomator dump /sdcard/a.xml >/dev/null 2>&1
   adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1; }
 sleep 20; anr
 adb shell am start -n $PKG/.SettingsActivity --ez smoke true
+sleep 3; adb shell settings put secure selected_spell_checker $PKG/.AmpySpellChecker; echo "spell=$(adb shell settings get secure selected_spell_checker)"
+adb shell dumpsys textservices | head -40 > ci-out/textservices.txt
 sleep 6
 # tap the test field (first EditText) to be sure the keyboard opens
 adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
