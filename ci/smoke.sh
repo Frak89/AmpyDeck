@@ -80,11 +80,11 @@ shot 05b-spacepad
 adb shell input motionevent MOVE 8 $(( y-120 )); adb shell input motionevent UP 8 $(( y-120 )); sleep 0.6
 alive || echo "::error::keyboard closed during space-trackpad gesture"
 # tap inside an already written word: suggestions for it, keyboard must stay
-set -- $b; [ $# -ge 4 ] && adb shell input tap $(( $1+60 )) $(( $2+70 )); sleep 1.2; shot 05c-word-tap
+set -- $b; [ $# -ge 4 ] && adb shell input tap $(( $1+90 )) $(( ($2+$4)/2 )); sleep 1.2; shot 05c-word-tap
 alive || echo "::error::keyboard closed after tapping a written word"
 keys; tap B1; sleep 0.5
 tap SYM; sleep 0.6; keys; tap "@"; tap "ABC"; sleep 0.6; keys
-tap EMOJI; sleep 0.8; keys; tap PANEL0; tap PANELABC; sleep 0.6; keys
+tap EMOJI; sleep 0.8; keys; tap PANEL0; p=$(pos PANELABC); set -- $p; adb shell input tap 50 $2; sleep 0.6; keys
 tap TOOLBAR; sleep 0.4; shot 06-toolbar; tap TOOLBAR
 type ok; tap "."; tap ","; shot 07-final
 # trackpad: hold ?123, drag around, select mode, back
@@ -94,7 +94,7 @@ p=$(pos PANEL0); set -- $p; adb shell input swipe $1 $(( $2+60 )) $(( $1+300 )) 
 adb shell input swipe 3 $(( $2+120 )) 500 $(( $2+120 )) 400; sleep 0.6
 alive || echo "::error::keyboard closed by an edge drag on the trackpad"
 adb shell input swipe $(( $1+300 )) $(( $2+60 )) $(( $1+300 )) $(( $2-40 )) 400; sleep 0.4
-tap PANELABC; sleep 0.6; keys
+p=$(pos PANELABC); set -- $p; adb shell input tap 50 $2; sleep 0.6; keys
 
 echo "--- text in field"; adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb shell cat /sdcard/ui.xml | grep -o 'class="android.widget.EditText"[^>]*' | grep -o 'text="[^"]*"' | head -2
 crash=$(adb shell run-as $PKG cat files/last_crash.txt 2>/dev/null)
@@ -109,6 +109,7 @@ if ! alive; then echo "::error::keyboard not shown / process gone at end"; fail=
 # swipe up from the space bar must hide the keyboard
 p=$(pos SPACE); set -- $p; x=$1; y=$2
 adb shell "input motionevent DOWN $x $y; input motionevent MOVE $x $(( y-60 )); input motionevent MOVE $x $(( y-250 )); input motionevent MOVE $x $(( y-450 )); input motionevent UP $x $(( y-450 ))"; sleep 1.2; shot 09-after-swipe-up
+adb logcat -d -s AmpyDeckSpell:I | tail -8 | while IFS= read -r l; do echo "::warning::$l"; done
 adb logcat -d > ci-out/logcat2.txt
 adb logcat -d -s AmpyDeckKeys:I | grep -aE "swipe|SWIPE|requestHide|TOUCH" | tail -8 | while IFS= read -r l; do echo "::warning::$l"; done
 if adb shell dumpsys input_method | grep -q "mIsInputViewShown=true"; then echo "::error::swipe up did not hide the keyboard"; fail=1; fi
