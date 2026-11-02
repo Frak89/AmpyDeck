@@ -67,6 +67,7 @@ grep -a FIT ci-out/keys.txt | while IFS= read -r l; do echo "::warning::$l"; don
 grep GEOM ci-out/keys.txt | tail -2 | while IFS= read -r l; do echo "::warning::$l"; done
 adb shell dumpsys window windows | grep -A3 "InputMethod" | head -20 | while IFS= read -r l; do echo "::warning::WIN $l"; done
 shot 01-open
+adb shell dumpsys gfxinfo $PKG:ime reset >/dev/null 2>&1
 p=$(pos g); (adb shell input swipe $p $p 2500 &) ; sleep 1.0; shot 01b-preview; sleep 2
 p=$(pos e); (adb shell input swipe $p $p 2500 &) ; sleep 1.2; shot 01c-accents; sleep 2; adb shell input keyevent KEYCODE_DEL
 type ciao; tap ","; shot 02-comma
@@ -115,6 +116,11 @@ if [ -n "$crash" ]; then echo "$crash" | head -30 | while IFS= read -r l; do ech
 if [ -n "$fatal" ]; then echo "$fatal" | while IFS= read -r l; do echo "::error::FATAL $l"; done; fail=1; fi
 grep -E "AmpyDeckCrash|ANR in $PKG" ci-out/logcat.txt | head -20 | while IFS= read -r l; do echo "::error::$l"; done
 if ! alive; then echo "::error::keyboard not shown / process gone at end"; fail=1; fi
+# ---- frame timing while typing (jank report)
+adb shell dumpsys gfxinfo $PKG:ime > ci-out/gfxinfo.txt; head -c 300 ci-out/gfxinfo.txt | tr "\n" " " | sed "s/^/::notice::GFXHEAD /"; echo
+grep -E "Total frames rendered|Janky frames|50th percentile|90th percentile|99th percentile|Number Slow UI thread|Number Frame deadline missed" ci-out/gfxinfo.txt | head -16 | while IFS= read -r l; do echo "::notice::GFX $l"; done
+grep -a -E "GC freed.*total [0-9]+(\.[0-9]+)?(s|ms)" ci-out/../ci-out/keys.txt >/dev/null 2>&1
+adb logcat -d | grep -a "ampydeck:ime" | grep -a "GC freed" | tail -5 | while IFS= read -r l; do echo "::notice::$l"; done
 # ---- mouse: open from the toolbar (➶ = 4th tool), move the pointer, click, exit
 p=$(pos TOOLBAR); set -- $p; bx=$1; by=$2; W=1080
 adb shell input tap $bx $by; sleep 0.5
