@@ -112,7 +112,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
     private void startView(EditorInfo info,boolean restarting){
         syncPrefs();
         dict=Dictionary.get(this);
-        composing.setLength(0);autoSpaced=false;flowComposing=false;undoOriginal=null;noCorrectOnce=false;flowAlternates=null;
+        composing.setLength(0);autoSpaced=false;flowComposing=false;undoOriginal=null;noCorrectOnce=false;flowAlternates=null;dropPrev();
         int cls=info.inputType&InputType.TYPE_MASK_CLASS,var=info.inputType&InputType.TYPE_MASK_VARIATION;
         boolean password=cls==InputType.TYPE_CLASS_TEXT&&(var==InputType.TYPE_TEXT_VARIATION_PASSWORD||var==InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
             ||var==InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD)||cls==InputType.TYPE_CLASS_NUMBER&&var==InputType.TYPE_NUMBER_VARIATION_PASSWORD;
@@ -173,7 +173,18 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
     private String before(int n){InputConnection ic=ic();if(ic==null)return "";CharSequence s=ic.getTextBeforeCursor(n,0);return s==null?"":s.toString();}
     private static boolean wordChar(char c){return Character.isLetter(c)||c=='\''||c=='’';}
     /** Word before the composing/current word (for bigrams). */
+    /**
+     * Previous word, cached: asking the app for text is a blocking round-trip that waits for the
+     * app's UI thread, so it is done at most once per word instead of on every keystroke.
+     */
+    private String prevCache;private boolean prevValid,atBoundary;
+    private void setPrev(String w){prevCache=w;prevValid=true;}
+    private void dropPrev(){prevValid=false;atBoundary=false;}
     private String prevWord(){
+        if(prevValid)return prevCache;
+        String r=prevWordRaw();prevCache=r;prevValid=true;return r;
+    }
+    private String prevWordRaw(){
         String b=before(80);
         int i=b.length();
         while(i>0&&wordChar(b.charAt(i-1)))i--;   // skip the word being typed (composing text is in the editor)
@@ -262,6 +273,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
             if(learn&&(out.equals(typed)||flowComposing))learnLater(out,prevWord());
         }
         ic.commitText(out+trailing,1);
+        if(!out.isEmpty()){setPrev(out);atBoundary=true;}
         composing.setLength(0);noCorrectOnce=false;flowComposing=false;flowAlternates=null;
         return out;
     }
@@ -274,7 +286,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
         editWord=null;
         if(!predict){ic.commitText(s,1);return;}
         if(flowComposing){commitWord(false,"");ic.commitText(" ",1);}   // tap after a flow word starts a new word
-        if(composing.length()==0){
+        if(composing.length()==0&&!atBoundary){
             // resume a word the cursor is glued to (SwiftKey edits words in place)
             String b=before(48);int i=b.length();while(i>0&&wordChar(b.charAt(i-1)))i--;
             CharSequence after=ic.getTextAfterCursor(1,0);
@@ -284,7 +296,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
                     int cur=selStart;ic.setComposingRegion(cur-w.length(),cur);composing.append(w);}
             }
         }
-        composing.append(s);setComposing();autoSpaced=false;undoOriginal=null;
+        composing.append(s);setComposing();autoSpaced=false;undoOriginal=null;atBoundary=false;
     }
 
     @Override public void onText(String s){
@@ -296,6 +308,9 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
         if(composing.length()>0)commitWord(punct,"");
         if(punct&&autoSpaced){CharSequence b=ic.getTextBeforeCursor(1,0);if(b!=null&&b.length()==1&&b.charAt(0)==' ')ic.deleteSurroundingText(1,0);}
         ic.commitText(s,1);
+        if(c!=0&&".!?\n".indexOf(c)>=0){setPrev(null);atBoundary=true;}
+        else if(c!=0&&",;:)]}»”\"".indexOf(c)>=0){atBoundary=true;}
+        else dropPrev();
         boolean addSpace=autoSpaced&&c!=0&&".,!?;:".indexOf(c)>=0;
         if(addSpace)ic.commitText(" ",1);
         autoSpaced=addSpace;undoOriginal=null;
@@ -312,7 +327,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
                     if(b!=null&&b.toString().equals(undoReplacement)){
                         ic.beginBatchEdit();ic.deleteSurroundingText(undoReplacement.length(),0);
                         composing.setLength(0);composing.append(undoOriginal);setComposing();ic.endBatchEdit();
-                        undoOriginal=null;noCorrectOnce=true;autoSpaced=false;afterInput();return;
+                        undoOriginal=null;noCorrectOnce=true;autoSpaced=false;dropPrev();afterInput();return;
                     }
                     undoOriginal=null;
                 }
@@ -321,6 +336,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
                     if(flowComposing){composing.setLength(0);ic.commitText("",1);flowComposing=false;flowAlternates=null;}
                     else if(composing.length()==0)ic.commitText("",1);else setComposing();
                 }else{
+                    dropPrev();
                     CharSequence sel=ic.getSelectedText(0);
                     if(sel!=null&&sel.length()>0)ic.commitText("",1);
                     else sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL);
@@ -332,12 +348,13 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
                 ic.beginBatchEdit();
                 if(composing.length()>0){commitWord(true," ");autoSpaced=false;}
                 else{
-                    String b=before(3);
-                    if(pr.doubleSpace()&&now-lastSpaceAt<650&&b.length()>=2&&b.charAt(b.length()-1)==' '
+                    String b=pr.doubleSpace()&&now-lastSpaceAt<650?before(3):"";
+                    if(b.length()>=2&&b.charAt(b.length()-1)==' '
                         &&Character.isLetterOrDigit(b.charAt(b.length()-2))){
                         ic.deleteSurroundingText(1,0);ic.commitText(". ",1);
+                        setPrev(null);
                     }else ic.commitText(" ",1);
-                    autoSpaced=false;undoOriginal=null;
+                    atBoundary=true;autoSpaced=false;undoOriginal=null;
                 }
                 ic.endBatchEdit();lastSpaceAt=now;afterInput();return;
             }
@@ -353,6 +370,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
 
     @Override public void onDeleteWord(){
         InputConnection ic=ic();if(ic==null)return;
+        dropPrev();
         ic.beginBatchEdit();
         if(composing.length()>0){composing.setLength(0);ic.commitText("",1);flowComposing=false;}
         else{
@@ -367,6 +385,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
 
     @Override public void onCursor(int dir){
         InputConnection ic=ic();if(ic==null)return;
+        dropPrev();
         if(composing.length()>0){ic.finishComposingText();composing.setLength(0);flowComposing=false;}
         sendDownUpKeyEvents(dir<0?KeyEvent.KEYCODE_DPAD_LEFT:KeyEvent.KEYCODE_DPAD_RIGHT);
         undoOriginal=null;autoSpaced=false;
@@ -375,6 +394,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
     /** Trackpad page: arrow / home / end keys, holding shift when selection mode is on. */
     @Override public void onMove(int keyCode,boolean select){
         InputConnection ic=ic();if(ic==null)return;
+        dropPrev();
         if(composing.length()>0){ic.finishComposingText();composing.setLength(0);flowComposing=false;flowAlternates=null;}
         if(select){
             long t=SystemClock.uptimeMillis();int meta=KeyEvent.META_SHIFT_ON|KeyEvent.META_SHIFT_LEFT_ON;
@@ -404,7 +424,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
         for(String w:words){String x=shift==2?w.toUpperCase(Locale.ROOT):shift==1?Character.toUpperCase(w.charAt(0))+w.substring(1):w;ws.add(x);}
         composing.setLength(0);composing.append(ws.get(0));setComposing();
         ic.endBatchEdit();
-        flowComposing=true;flowAlternates=ws;autoSpaced=false;undoOriginal=null;
+        flowComposing=true;flowAlternates=ws;autoSpaced=false;undoOriginal=null;dropPrev();
         if(kv.shift()==1)kv.setShift(0);
         refreshSuggestions();
     }
@@ -427,6 +447,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
         ic.commitText(s+" ",1);
         ic.endBatchEdit();
         if(learn)learnLater(s,prev);
+        setPrev(s);atBoundary=true;
         composing.setLength(0);flowComposing=false;flowAlternates=null;noCorrectOnce=false;undoOriginal=null;autoSpaced=true;
         afterInput();
     }
@@ -468,7 +489,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
     @Override public void onClip(String text){
         InputConnection ic=ic();if(ic==null)return;
         if(composing.length()>0)commitWord(false,"");
-        ic.commitText(text,1);autoSpaced=false;afterInput();
+        ic.commitText(text,1);autoSpaced=false;dropPrev();afterInput();
     }
     @Override public void onClearClips(){clips.clear();kv.setClips(clips);}
     @Override public void onPageChanged(int page){
@@ -505,11 +526,15 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
     private void selectionMoved(int oss,int ose,int nss,int nse,int cs,int ce){
         if(composing.length()>0&&(nss!=ce||nse!=ce)){
             // cursor jumped away from the word being composed
+            dropPrev();
             composing.setLength(0);flowComposing=false;flowAlternates=null;
             InputConnection ic=ic();if(ic!=null)ic.finishComposingText();
             undoOriginal=null;autoSpaced=false;updateShift();refreshSuggestions();
         }else if(composing.length()==0&&(nss!=ose||nse!=ose)&&cs==-1){
+            // our own commit: afterInput() already refreshed everything, avoid duplicate blocking calls
+            if(SystemClock.uptimeMillis()-lastSelfEdit<250&&nss==nse)return;
             if(Math.abs(nss-oss)>1||nss!=nse){undoOriginal=null;autoSpaced=false;}
+            dropPrev();
             editWord=null;
             // a selection change we did not cause = the user tapped somewhere in the text
             if(nss==nse&&predict&&SystemClock.uptimeMillis()-lastSelfEdit>250)findEditWord(nss);
