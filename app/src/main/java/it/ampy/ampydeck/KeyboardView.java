@@ -87,7 +87,7 @@ public final class KeyboardView extends View {
 
     public KeyboardView(Context c,Listener l){
         super(c);L=l;audio=(AudioManager)c.getSystemService(Context.AUDIO_SERVICE);
-        fling=new android.widget.OverScroller(c);
+        fling=new android.widget.OverScroller(c);fling.setFriction(.0075f);   // longer, iOS-like glide
         for(int i=0;i<3;i++){sc[i]=new GlitchTextView.Scrambler();sc[i].stepMs=24;sc[i].spreadMs=150;}
         reload();
     }

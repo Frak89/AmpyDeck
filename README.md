@@ -15,6 +15,9 @@ Apri **AmpyDeck** → `1 · Abilita` → `2 · Scegli AmpyDeck`, poi prova nel c
 - **Riga dei numeri**, **simboli sui tasti** (pressione lunga) e popup accenti `à è é ì ò ù ç ñ…`
 - **Barra spaziatrice cursore** (scorri), **swipe a sinistra su ⌫** per cancellare la parola, ⌫ tenuto premuto che accelera
 - Shift singolo / **doppio tocco = blocco maiuscole**, maiuscola automatica, **doppio spazio = punto**, punteggiatura intelligente
+- **Mouse a schermo**: tocca 🖱 MOUSE sotto la tastiera (Android 16+) o ➶ nella toolbar: la tastiera diventa un touchpad e un puntatore a scelta (freccia neon, classica, cyber, mirino, anello, punto, manina) compare sopra ogni app; tocca = click, LUNGO, SCORRI, indietro/home/recenti (servizio di accessibilità "AmpyDeck Mouse", non legge lo schermo)
+- **Trackpad**: tieni premuta la barra spaziatrice
+- **Emoji** con scorrimento inerziale
 - **Toolbar ⧉**: impostazioni, emoji, appunti, cambio tema e sfondo al volo, replay dell'animazione
 - **Emoji** a categorie con recenti, **cronologia appunti** (solo in memoria, ignora i contenuti segnati come sensibili)
 - Tieni premuto un suggerimento per **rimuoverlo**; dizionari **Italiano**, **English** o entrambi (wordfreq, ~45.000 parole)
