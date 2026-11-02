@@ -106,7 +106,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
 
     @Override public void onStartInputView(EditorInfo info,boolean restarting){
         super.onStartInputView(info,restarting);
-        selStart=info.initialSelStart;selEnd=info.initialSelEnd;
+        selStart=info.initialSelStart;selEnd=info.initialSelEnd;tracker.reset();
         try{startView(info,restarting);}catch(Throwable t){CrashLog.log("startInputView",t);}
     }
     private void startView(EditorInfo info,boolean restarting){
@@ -169,7 +169,14 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
     }
 
     // ------------------------------------------------------------------ text context helpers
-    private InputConnection ic(){lastSelfEdit=SystemClock.uptimeMillis();return getCurrentInputConnection();}
+    private final TextTracker tracker=new TextTracker();
+    /** Every edit goes through the tracker, so reads can be answered locally (no blocking IPC). */
+    private InputConnection ic(){lastSelfEdit=SystemClock.uptimeMillis();InputConnection raw=getCurrentInputConnection();return raw==null?null:tracker.use(raw);}
+    private void sendKey(int code){
+        InputConnection ic=ic();if(ic==null)return;long t=SystemClock.uptimeMillis();
+        ic.sendKeyEvent(new KeyEvent(t,t,KeyEvent.ACTION_DOWN,code,0,0,KeyEvent.KEYCODE_UNKNOWN,0,KeyEvent.FLAG_SOFT_KEYBOARD|KeyEvent.FLAG_KEEP_TOUCH_MODE));
+        ic.sendKeyEvent(new KeyEvent(t,SystemClock.uptimeMillis(),KeyEvent.ACTION_UP,code,0,0,KeyEvent.KEYCODE_UNKNOWN,0,KeyEvent.FLAG_SOFT_KEYBOARD|KeyEvent.FLAG_KEEP_TOUCH_MODE));
+    }
     private String before(int n){InputConnection ic=ic();if(ic==null)return "";long t=System.nanoTime();CharSequence s=ic.getTextBeforeCursor(n,0);Perf.add("ipc.before",System.nanoTime()-t);return s==null?"":s.toString();}
     private static boolean wordChar(char c){return Character.isLetter(c)||c=='\''||c=='’';}
     /** Word before the composing/current word (for bigrams). */
@@ -339,7 +346,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
                     dropPrev();
                     CharSequence sel=ic.getSelectedText(0);
                     if(sel!=null&&sel.length()>0)ic.commitText("",1);
-                    else sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL);
+                    else sendKey(KeyEvent.KEYCODE_DEL);
                 }
                 autoSpaced=false;afterInput();return;
             }
@@ -362,7 +369,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
                 if(composing.length()>0)commitWord(false,"");
                 if(enterAction!=EditorInfo.IME_ACTION_NONE&&enterAction!=EditorInfo.IME_ACTION_UNSPECIFIED&&!multiLine)ic.performEditorAction(enterAction);
                 else if(enterAction==EditorInfo.IME_ACTION_SEND&&multiLine)ic.performEditorAction(enterAction);
-                else sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER);
+                else sendKey(KeyEvent.KEYCODE_ENTER);
                 autoSpaced=false;undoOriginal=null;afterInput();return;
             }
         }
@@ -387,7 +394,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
         InputConnection ic=ic();if(ic==null)return;
         dropPrev();
         if(composing.length()>0){ic.finishComposingText();composing.setLength(0);flowComposing=false;}
-        sendDownUpKeyEvents(dir<0?KeyEvent.KEYCODE_DPAD_LEFT:KeyEvent.KEYCODE_DPAD_RIGHT);
+        sendKey(dir<0?KeyEvent.KEYCODE_DPAD_LEFT:KeyEvent.KEYCODE_DPAD_RIGHT);
         undoOriginal=null;autoSpaced=false;
     }
 
@@ -402,7 +409,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
             ic.sendKeyEvent(new KeyEvent(t,t,KeyEvent.ACTION_DOWN,keyCode,0,meta));
             ic.sendKeyEvent(new KeyEvent(t,t,KeyEvent.ACTION_UP,keyCode,0,meta));
             ic.sendKeyEvent(new KeyEvent(t,t,KeyEvent.ACTION_UP,KeyEvent.KEYCODE_SHIFT_LEFT,0,0));
-        }else sendDownUpKeyEvents(keyCode);
+        }else sendKey(keyCode);
         undoOriginal=null;autoSpaced=false;
     }
 
@@ -526,7 +533,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
     private void selectionMoved(int oss,int ose,int nss,int nse,int cs,int ce){
         if(composing.length()>0&&(nss!=ce||nse!=ce)){
             // cursor jumped away from the word being composed
-            dropPrev();
+            tracker.invalidate();dropPrev();
             composing.setLength(0);flowComposing=false;flowAlternates=null;
             InputConnection ic=ic();if(ic!=null)ic.finishComposingText();
             undoOriginal=null;autoSpaced=false;updateShift();refreshSuggestions();
@@ -534,7 +541,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
             // our own commit: afterInput() already refreshed everything, avoid duplicate blocking calls
             if(SystemClock.uptimeMillis()-lastSelfEdit<250&&nss==nse)return;
             if(Math.abs(nss-oss)>1||nss!=nse){undoOriginal=null;autoSpaced=false;}
-            dropPrev();
+            tracker.invalidate();dropPrev();
             editWord=null;
             // a selection change we did not cause = the user tapped somewhere in the text
             if(nss==nse&&predict&&SystemClock.uptimeMillis()-lastSelfEdit>250)findEditWord(nss);
