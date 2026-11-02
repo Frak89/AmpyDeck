@@ -170,7 +170,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
 
     // ------------------------------------------------------------------ text context helpers
     private InputConnection ic(){lastSelfEdit=SystemClock.uptimeMillis();return getCurrentInputConnection();}
-    private String before(int n){InputConnection ic=ic();if(ic==null)return "";CharSequence s=ic.getTextBeforeCursor(n,0);return s==null?"":s.toString();}
+    private String before(int n){InputConnection ic=ic();if(ic==null)return "";long t=System.nanoTime();CharSequence s=ic.getTextBeforeCursor(n,0);Perf.add("ipc.before",System.nanoTime()-t);return s==null?"":s.toString();}
     private static boolean wordChar(char c){return Character.isLetter(c)||c=='\''||c=='’';}
     /** Word before the composing/current word (for bigrams). */
     /**
@@ -207,7 +207,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
         if(kv.shift()==2)return;
         int caps=0;
         if(autoCaps&&composing.length()==0){InputConnection ic=ic();EditorInfo ei=getCurrentInputEditorInfo();
-            if(ic!=null&&ei!=null&&ei.inputType!=0)caps=ic.getCursorCapsMode(ei.inputType);}
+            long t=System.nanoTime();if(ic!=null&&ei!=null&&ei.inputType!=0)caps=ic.getCursorCapsMode(ei.inputType);Perf.add("ipc.caps",System.nanoTime()-t);}
         kv.setShift(caps!=0?1:0);
     }
 
@@ -259,7 +259,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
     }
 
     // ------------------------------------------------------------------ committing
-    private void setComposing(){InputConnection ic=ic();if(ic!=null)ic.setComposingText(composing,1);}
+    private void setComposing(){InputConnection ic=ic();long t=System.nanoTime();if(ic!=null)ic.setComposingText(composing,1);Perf.add("ipc.compose",System.nanoTime()-t);}
 
     /** Commits the composing word (autocorrected when asked) and learns it. Returns what was committed. */
     private String commitWord(boolean correct,String trailing){
@@ -516,7 +516,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
         }
     }
 
-    private void afterInput(){updateShift();refreshSuggestions();}
+    private void afterInput(){long t=System.nanoTime();updateShift();refreshSuggestions();Perf.add("afterInput",System.nanoTime()-t);}
 
     @Override public void onUpdateSelection(int oss,int ose,int nss,int nse,int cs,int ce){
         super.onUpdateSelection(oss,ose,nss,nse,cs,ce);

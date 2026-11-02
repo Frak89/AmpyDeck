@@ -138,7 +138,7 @@ p=$(pos PANELABC); set -- $p; adb shell input tap 50 $2; sleep 0.5
 # swipe up from the space bar must hide the keyboard
 p=$(pos SPACE); set -- $p; x=$1; y=$2
 adb shell "input motionevent DOWN $x $y; input motionevent MOVE $x $(( y-60 )); input motionevent MOVE $x $(( y-250 )); input motionevent MOVE $x $(( y-450 )); input motionevent UP $x $(( y-450 ))"; sleep 1.2; shot 09-after-swipe-up
-adb logcat -d -s AmpyDeckPerf:* | tail -4 | while IFS= read -r l; do echo "::notice::$l"; done
+adb logcat -d -s AmpyDeckPerf:* | tail -6 | while IFS= read -r l; do echo "::notice::$l"; done
 adb logcat -d -s AmpyDeckSpell:* | tail -10 | while IFS= read -r l; do echo "::warning::$l"; done
 adb logcat -d > ci-out/logcat2.txt
 adb logcat -d -s AmpyDeckKeys:I | grep -aE "swipe|SWIPE|requestHide|TOUCH" | tail -8 | while IFS= read -r l; do echo "::warning::$l"; done

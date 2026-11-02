@@ -274,7 +274,8 @@ public final class KeyboardView extends View {
     }
 
     // ------------------------------------------------------------------ feedback
-    private void tap(int code){
+    private void tap(int code){long t=System.nanoTime();tap0(code);Perf.add("haptic",System.nanoTime()-t);}
+    private void tap0(int code){
         if(haptics)performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
         if(sound&&audio!=null){int fx=code==Layouts.DEL?AudioManager.FX_KEYPRESS_DELETE:code==Layouts.SPACE?AudioManager.FX_KEYPRESS_SPACEBAR:
             code==Layouts.ENTER?AudioManager.FX_KEYPRESS_RETURN:AudioManager.FX_KEYPRESS_STANDARD;audio.playSoundEffect(fx,-1f);}

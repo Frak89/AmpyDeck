@@ -10,7 +10,8 @@ final class SafeListener implements KeyboardView.Listener {
     private final KeyboardView.Listener d;
     SafeListener(KeyboardView.Listener d){this.d=d;}
     private interface Call{void run();}
-    private static void x(String w,Call c){try{c.run();}catch(Throwable e){CrashLog.log(w,e);}}
+    private static void x(String w,Call c){long t=System.nanoTime();try{c.run();}catch(Throwable e){CrashLog.log(w,e);}
+        finally{int sp=w.indexOf(' ');Perf.add("L."+(sp>0?w.substring(0,sp):w),System.nanoTime()-t);}}
 
     @Override public void onText(String s){x("onText '"+s+"'",()->d.onText(s));}
     @Override public void onCode(int code){x("onCode "+code,()->d.onCode(code));}
