@@ -11,7 +11,7 @@ public final class Layouts {
     private Layouts(){}
 
     public static final int SHIFT=-1,ABC=-3,SYM=-2,MORE=-6,DEL=-5,ENTER=-4,EMOJI=-7,PAD=-8,SPACE=32,NONE=0;
-    public static final int LETTERS=0,SYM1=1,SYM2=2,EMOJIS=3,CLIP=4,TRACKPAD=5;
+    public static final int LETTERS=0,SYM1=1,SYM2=2,EMOJIS=3,CLIP=4,TRACKPAD=5,MOUSE=6;
 
     public static final class Key {
         public String label;public final int code;public String text;public float w;

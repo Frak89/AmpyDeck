@@ -124,8 +124,15 @@ public final class DeckRoot extends FrameLayout {
         ep.setStyle(Paint.Style.STROKE);ep.setStrokeWidth(Ui.dpf(1.2f));ep.setColor(Theme.a(th.secondary,200));c.drawPath(pth,ep);
         Paint tp=new Paint(Paint.ANTI_ALIAS_FLAG);tp.setTypeface(Ui.MONO_BOLD);tp.setTextSize(bh*.42f);tp.setColor(th.fg);
         Paint.FontMetrics fm=tp.getFontMetrics();float ty=cy-(fm.ascent+fm.descent)/2f;
-        tp.setColor(th.accent);tp.setTextSize(bh*.6f);fm=tp.getFontMetrics();c.drawText("⚙",gear.left+bh*.25f,cy-(fm.ascent+fm.descent)/2f,tp);
-        tp.setTextSize(bh*.36f);tp.setColor(th.fg);fm=tp.getFontMetrics();c.drawText("SETUP",gear.left+bh*1.15f,cy-(fm.ascent+fm.descent)/2f,tp);
+        boolean on=kv.page()==Layouts.MOUSE;
+        if(on){ep.setStyle(Paint.Style.FILL);ep.setColor(Theme.a(th.accent,70));c.drawPath(pth,ep);}
+        // mini pointer icon (the style chosen in settings) + label
+        Prefs pr=Prefs.get(getContext());
+        c.save();float ic=bh*.62f;
+        String st=pr.s("pointer","neon");boolean centred="cross".equals(st)||"ring".equals(st)||"dot".equals(st);
+        Pointers.draw(c,st,gear.left+bh*(centred?.55f:.35f),centred?cy:cy-ic*.55f,ic,Pointers.color(th,pr.s("pointer_color","accent")),th);
+        c.restore();
+        tp.setTextSize(bh*.36f);tp.setColor(on?th.accent:th.fg);fm=tp.getFontMetrics();c.drawText(on?"MOUSE ●":"MOUSE",gear.left+bh*1.15f,cy-(fm.ascent+fm.descent)/2f,tp);
     }
     @Override public boolean onTouchEvent(android.view.MotionEvent e){
         if(!stripOn)return false;

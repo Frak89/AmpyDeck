@@ -51,5 +51,19 @@
                 android:name="android.view.textservice.scs"
                 android:resource="@xml/spellchecker" />
         </service>
+
+        <service
+            android:name=".AmpyMouseService"
+            android:exported="true"
+            android:label="@string/mouse_name"
+            android:process=":ime"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/mouse_service" />
+        </service>
     </application>
 </manifest>

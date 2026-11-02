@@ -99,7 +99,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
                 if(w!=null){w.getInsetsController().hide(android.view.WindowInsets.Type.captionBar());ok=true;}}
             catch(Throwable t){CrashLog.log("hideCaptionBar",t);}
         }
-        if(root!=null)root.setStrip(ok,()->{try{startActivity(new Intent(this,SettingsActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}catch(Throwable ignored){}});
+        if(root!=null)root.setStrip(ok,()->kv.setPage(kv.page()==Layouts.MOUSE?Layouts.LETTERS:Layouts.MOUSE));
     }
     /** The system delegates the IME switcher to us when its bar is hidden: it lives in the ⧉ toolbar (⌨ TASTIERE). */
     @Override public void onCustomImeSwitcherButtonRequestedVisible(boolean visible){}
@@ -141,7 +141,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
         refreshSuggestions();
     }
     @Override public void onWindowShown(){super.onWindowShown();try{if(root!=null){root.setRunning(true);root.playEntry();root.scheduleFit();}}catch(Throwable t){CrashLog.log("windowShown",t);}}
-    @Override public void onWindowHidden(){super.onWindowHidden();if(root!=null)root.setRunning(false);dict.save();}
+    @Override public void onWindowHidden(){super.onWindowHidden();AmpyMouseService ms=AmpyMouseService.get();if(ms!=null)ms.hide();if(kv!=null&&kv.page()==Layouts.MOUSE)kv.setPage(Layouts.LETTERS);if(root!=null)root.setRunning(false);dict.save();}
     @Override public void onFinishInputView(boolean finishing){
         super.onFinishInputView(finishing);
         if(composing.length()>0){InputConnection ic=getCurrentInputConnection();if(ic!=null)ic.finishComposingText();composing.setLength(0);}
@@ -444,6 +444,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
                 syncPrefs();Ui.toast(this,Prefs.BG_NAMES[i]);break;}
             case "replay":root.playEntry();break;
             case "switch":onSpaceLongPress();break;
+            case "mouse":kv.setPage(Layouts.MOUSE);break;
             case "selectall":case "copy":case "paste":{
                 InputConnection ic=ic();if(ic==null)break;
                 if(composing.length()>0){ic.finishComposingText();composing.setLength(0);flowComposing=false;}
@@ -467,7 +468,29 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
         ic.commitText(text,1);autoSpaced=false;afterInput();
     }
     @Override public void onClearClips(){clips.clear();kv.setClips(clips);}
-    @Override public void onPageChanged(int page){if(page==Layouts.LETTERS)updateShift();}
+    @Override public void onPageChanged(int page){
+        if(page==Layouts.LETTERS)updateShift();
+        if(root!=null)root.invalidate();
+        AmpyMouseService m=AmpyMouseService.get();
+        if(page==Layouts.MOUSE){
+            if(m==null){
+                Ui.toast(this,"Attiva \"AmpyDeck Mouse\" in Accessibilità per il puntatore a schermo");
+                try{startActivity(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}catch(Throwable ignored){}
+                kv.post(()->kv.setPage(Layouts.LETTERS));return;
+            }
+            m.show();
+        }else if(m!=null)m.hide();
+    }
+    @Override public void onMouseMove(float dx,float dy){AmpyMouseService m=AmpyMouseService.get();if(m!=null)m.move(dx,dy);}
+    @Override public void onMouse(String action,float v){
+        AmpyMouseService m=AmpyMouseService.get();if(m==null)return;
+        switch(action){
+            case "click":m.click(false);break;
+            case "long":m.click(true);break;
+            case "scroll":m.scroll(-v);break;
+            default:m.global(action);
+        }
+    }
 
     private void afterInput(){updateShift();refreshSuggestions();}
 

@@ -34,6 +34,9 @@ public final class KeyboardView extends View {
         void onMove(int keyCode,boolean select);
         /** How likely the word being typed continues with this letter (0 = unknown). */
         float letterWeight(String letter);
+        /** Mouse page: relative pointer motion (px) and actions (click, long, scroll:dy, back, home, recents). */
+        void onMouseMove(float dx,float dy);
+        void onMouse(String action,float value);
     }
 
     private static final Random R=new Random();
@@ -84,6 +87,7 @@ public final class KeyboardView extends View {
 
     public KeyboardView(Context c,Listener l){
         super(c);L=l;audio=(AudioManager)c.getSystemService(Context.AUDIO_SERVICE);
+        fling=new android.widget.OverScroller(c);
         for(int i=0;i<3;i++){sc[i]=new GlitchTextView.Scrambler();sc[i].stepMs=24;sc[i].spreadMs=150;}
         reload();
     }
@@ -91,18 +95,19 @@ public final class KeyboardView extends View {
     public void reload(){
         pr=Prefs.get(getContext());th=Theme.load(getContext());
         keyStyle=pr.keyStyle();hints=pr.hints();preview=pr.popup();flowOn=pr.flow();trailOn=pr.trail();
+        mouseSpeed=pr.f("mouse_speed",1.6f);
         haptics=pr.haptics();sound=pr.sound();glitch=pr.glitch();numberRow=pr.numberRow();emojiKey=pr.b("emoji_key",true);
         recents=new ArrayList<>(Arrays.asList(pr.s("emoji_recent","").split("\u0001")));recents.remove("");
         buildRows();requestLayout();invalidate();
         removeCallbacks(idle);if(glitch>0)postDelayed(idle,2500);
     }
 
-    private boolean panelPage(){return page==Layouts.EMOJIS||page==Layouts.CLIP||page==Layouts.TRACKPAD;}
+    private boolean panelPage(){return page==Layouts.EMOJIS||page==Layouts.CLIP||page==Layouts.TRACKPAD||page==Layouts.MOUSE;}
     public boolean gestureActive(){return activeId!=-1;}
     // ------------------------------------------------------------------ public API
     public int page(){return page;}
     public void setPage(int pg){
-        if(pg==page)return;page=pg;panelScroll=0;padSelect=false;buildRows();layoutKeys();invalidate();L.onPageChanged(pg);
+        if(pg==page)return;page=pg;panelScroll=0;padSelect=false;mouseScroll=false;if(fling!=null)fling.forceFinished(true);buildRows();layoutKeys();invalidate();L.onPageChanged(pg);
     }
     public int shift(){return shift;}
     public void setShift(int s){if(s!=shift){shift=s;invalidate();}}
@@ -275,8 +280,17 @@ public final class KeyboardView extends View {
     @Override public boolean onTouchEvent(MotionEvent e){
         try{return touch(e);}catch(Throwable t){CrashLog.log("touch",t);resetTouch();return true;}
     }
+    // inertial scrolling for the emoji / clipboard panels
+    private android.widget.OverScroller fling;private android.view.VelocityTracker vt;private boolean flingStopped;
+    private void startFling(float vy){
+        float max=Math.max(0,panelContentH()-(panelBottomRowTop()-barH));if(max<=0)return;
+        fling.fling(0,(int)panelScroll,0,(int)vy,0,0,0,(int)max,0,(int)Ui.dpf(36));postInvalidateOnAnimation();
+    }
     private boolean touch(MotionEvent e){
         int a=e.getActionMasked();
+        if(vt==null)vt=android.view.VelocityTracker.obtain();
+        if(a==MotionEvent.ACTION_DOWN){vt.clear();flingStopped=!fling.isFinished();fling.forceFinished(true);}
+        vt.addMovement(e);
         switch(a){
             case MotionEvent.ACTION_DOWN:case MotionEvent.ACTION_POINTER_DOWN:{
                 int i=e.getActionIndex();
@@ -327,6 +341,7 @@ public final class KeyboardView extends View {
         if(inBar)return;
         if(spacePad){padDrag(x,y,x-px,y-py);return;}
         if(inPanel&&page==Layouts.TRACKPAD){padMove(x,y,x-px,y-py);return;}
+        if(inPanel&&page==Layouts.MOUSE){mouseMove(x,y,x-px,y-py);return;}
         if(inPanel){if(!panelDragging&&Math.abs(dy)>Ui.dpf(8))panelDragging=true;
             if(panelDragging){panelScroll-=y-(downY+dyAcc);dyAcc=y-downY;clampScroll();invalidate();}return;}
         if(downKey==null)return;
@@ -377,7 +392,10 @@ public final class KeyboardView extends View {
         removeCallbacks(longPress);removeCallbacks(repeatDel);
         if(spacePad){spacePad=false;page=spacePadPrev;padTouch=false;padSelect=false;trail.clear();invalidate();return;}
         if(inBar){barUp(x);dyAcc=0;return;}
-        if(inPanel){if(!panelDragging)panelTap(x,y);dyAcc=0;return;}
+        if(inPanel){
+            if(panelDragging&&(page==Layouts.EMOJIS||page==Layouts.CLIP)){vt.computeCurrentVelocity(1000,Ui.dpf(9000));startFling(-vt.getYVelocity());}
+            else if(!panelDragging&&!(flingStopped&&downY<panelBottomRowTop()))panelTap(x,y);
+            dyAcc=0;return;}
         if(downKey==null)return;
         if(swipeHide){L.onToolbar("hide");return;}
         if(popItems!=null){if(popSel>=0&&popSel<popItems.length){L.onText(popItems[popSel]);if(shift==1){shift=0;L.onShiftChanged();}}return;}
@@ -460,9 +478,9 @@ public final class KeyboardView extends View {
     private int popIndex(float x){if(popItems==null)return -1;int i=(int)((x-popRect.left)/popCell);return Math.max(0,Math.min(popItems.length-1,i));}
 
     // ------------------------------------------------------------------ bar
-    private static final String[] TOOLS={"settings","emoji","clip","theme","bg","replay","switch","hide"};
-    private static final String[] TOOL_ICONS={"⚙","☺","⎘","◐","▦","✦","⌨","⌄"};
-    private static final String[] TOOL_NAMES={"SETUP","EMOJI","CLIP","TEMA","SFONDO","FX","TASTIERE","CHIUDI"};
+    private static final String[] TOOLS={"settings","emoji","clip","mouse","theme","bg","replay","switch","hide"};
+    private static final String[] TOOL_ICONS={"⚙","☺","⎘","➶","◐","▦","✦","⌨","⌄"};
+    private static final String[] TOOL_NAMES={"SETUP","EMOJI","CLIP","MOUSE","TEMA","SFONDO","FX","TASTIERE","CHIUDI"};
     /** 0 = toolbar toggle, 1..3 = slots, 4 = hide; in toolbar mode 10+i = tool i. */
     private int barSlot(float x){
         float W=getWidth();
@@ -490,7 +508,9 @@ public final class KeyboardView extends View {
         int n=emojiList().length;int rowsN=(n+emojiCols()-1)/emojiCols();return rowsN*emojiCell()*.86f+Ui.dpf(8);
     }
     private void clampScroll(){float max=Math.max(0,panelContentH()-(panelBottomRowTop()-barH));panelScroll=Math.max(0,Math.min(max,panelScroll));}
-    private int bottomCells(){return page==Layouts.EMOJIS?Layouts.EMOJI_TABS.length+2:page==Layouts.TRACKPAD?PAD_CELLS.length:3;}
+    private int bottomCells(){return page==Layouts.EMOJIS?Layouts.EMOJI_TABS.length+2:page==Layouts.TRACKPAD?PAD_CELLS.length:page==Layouts.MOUSE?MOUSE_CELLS.length:3;}
+    private static final String[] MOUSE_CELLS={"ABC","CLICK","LUNGO","SCORRI","◀","⌂","⧉","✕"};
+    private boolean mouseScroll;private float mouseSpeed=1.6f;
     private static final String[] PAD_CELLS={"ABC","?123","SEL","⇤","⇥","TUTTO","COPIA","INCOLLA","⌫"};
 
     // ------------------------------------------------------------------ trackpad (laptop style)
@@ -514,12 +534,24 @@ public final class KeyboardView extends View {
         invalidate();
     }
 
+    /** Laptop-style touchpad for the on-screen pointer (drawn by the AmpyDeck Mouse accessibility service). */
+    private void mouseMove(float x,float y,float ddx,float ddy){
+        if(downY>=panelBottomRowTop())return;
+        if(!panelDragging&&Math.hypot(x-downX,y-downY)>Ui.dpf(5))panelDragging=true;
+        if(!panelDragging)return;
+        padTouch=true;
+        if(mouseScroll){padAy+=ddy;if(Math.abs(padAy)>Ui.dpf(18)){L.onMouse("scroll",padAy*3f);padAy=0;}}
+        else{float sp=(float)Math.hypot(ddx,ddy);float acc=mouseSpeed*(sp>Ui.dpf(16)?2.4f:sp>Ui.dpf(8)?1.6f:1f);L.onMouseMove(ddx*acc,ddy*acc);}
+        trail.add(new float[]{x,y,SystemClock.uptimeMillis()});
+        invalidate();
+    }
+
     private void panelTap(float x,float y){
         float bt=panelBottomRowTop();
         if(y>=bt){
             int n=bottomCells();float w=getWidth()/(float)n;int i=Math.min(n-1,(int)(x/w));
             if(i==0){setPage(Layouts.LETTERS);return;}
-            if(i==n-1){L.onCode(Layouts.DEL);return;}
+            if(i==n-1){if(page==Layouts.MOUSE)setPage(Layouts.LETTERS);else L.onCode(Layouts.DEL);return;}
             if(page==Layouts.TRACKPAD){
                 switch(i){
                     case 1:setPage(Layouts.SYM1);break;
@@ -532,11 +564,23 @@ public final class KeyboardView extends View {
                 }
                 return;
             }
-            if(page==Layouts.EMOJIS){emojiTab=i-1;panelScroll=0;invalidate();}
+            if(page==Layouts.MOUSE){
+                switch(i){
+                    case 1:L.onMouse("click",0);break;
+                    case 2:L.onMouse("long",0);break;
+                    case 3:mouseScroll=!mouseScroll;invalidate();break;
+                    case 4:L.onMouse("back",0);break;
+                    case 5:L.onMouse("home",0);break;
+                    case 6:L.onMouse("recents",0);break;
+                }
+                return;
+            }
+            if(page==Layouts.EMOJIS){emojiTab=i-1;panelScroll=0;fling.forceFinished(true);invalidate();}
             else L.onClearClips();
             return;
         }
         if(page==Layouts.TRACKPAD)return;
+        if(page==Layouts.MOUSE){L.onMouse("click",0);return;}   // tap on the pad = click
         float cy=y-barH+panelScroll;
         if(page==Layouts.CLIP){int i=(int)((cy-Ui.dpf(4))/Ui.dpf(46));if(i>=0&&i<clips.size())L.onClip(clips.get(i));return;}
         float cell=emojiCell();int col=(int)(x/cell),row=(int)((cy-Ui.dpf(4))/(cell*.86f));int i=row*emojiCols()+col;
@@ -553,6 +597,7 @@ public final class KeyboardView extends View {
     private void drawAll(Canvas c){
         long now=SystemClock.uptimeMillis();boolean anim=false;
         drawBar(c,now);
+        if(fling.computeScrollOffset()&&(page==Layouts.EMOJIS||page==Layouts.CLIP)){panelScroll=fling.getCurrY();anim=true;}
         if(panelPage())drawPanel(c);
         else{
             boolean decoding=now<decodeUntil;anim|=decoding;
@@ -780,7 +825,7 @@ public final class KeyboardView extends View {
         float W=getWidth(),bt=panelBottomRowTop();
         c.save();c.clipRect(0,barH,W,bt);
         tp.setTextAlign(Paint.Align.CENTER);
-        if(page==Layouts.TRACKPAD)drawPad(c,W,bt);
+        if(page==Layouts.TRACKPAD||page==Layouts.MOUSE)drawPad(c,W,bt);
         else if(page==Layouts.EMOJIS){
             String[] l=emojiList();float cell=emojiCell(),ch=cell*.86f;int cols=emojiCols();
             tp.setTypeface(Typeface.DEFAULT);tp.setTextSize(ch*.56f);tp.setColor(0xffffffff);
@@ -817,6 +862,7 @@ public final class KeyboardView extends View {
             if(i==0)lab="ABC";else if(i==n-1)lab="⌫";
             else if(page==Layouts.EMOJIS){lab=Layouts.EMOJI_TABS[i-1];sel=emojiTab==i-1;edge=th.accent;}
             else if(page==Layouts.TRACKPAD){lab=PAD_CELLS[i];sel=i==2&&padSelect;edge=i==2?th.accent:th.secondary;}
+            else if(page==Layouts.MOUSE){lab=MOUSE_CELLS[i];sel=i==3&&mouseScroll;edge=i==1||i==2?th.accent:th.secondary;}
             else lab="✕ SVUOTA";
             chamfer(tmp,tr,Math.min(Ui.dpf(6),tr.width()/4));
             keyBody(c,tmp,tr,edge,false,sel);
@@ -845,9 +891,12 @@ public final class KeyboardView extends View {
         tp.setTypeface(Ui.MONO_BOLD);tp.setTextAlign(Paint.Align.CENTER);
         if(!padTouch){
             tp.setTextSize(Ui.dpf(13));tp.setColor(Theme.a(th.fg,170));
-            c.drawText(padSelect?"◧ SELEZIONE ATTIVA":"⌖ TRACKPAD",tr.centerX(),tr.centerY()-Ui.dpf(4),tp);
-            tp.setTypeface(Ui.MONO);tp.setTextSize(Ui.dpf(10.5f));tp.setColor(th.muted);
-            c.drawText(spacePad?"muovi il dito · rilascia per tornare":"trascina: ◀ ▶ lettere · ▲ ▼ righe",tr.centerX(),tr.centerY()+Ui.dpf(14),tp);
+            boolean mouse=page==Layouts.MOUSE;
+            c.drawText(mouse?(mouseScroll?"⇕ SCORRIMENTO":"🖱 MOUSE"):padSelect?"◧ SELEZIONE ATTIVA":"⌖ TRACKPAD",tr.centerX(),tr.centerY()-Ui.dpf(4),tp);
+            if(mouse){tp.setTypeface(Ui.MONO);tp.setTextSize(Ui.dpf(10.5f));tp.setColor(th.muted);
+                c.drawText(mouseScroll?"trascina su/giù per scorrere la pagina":"trascina: muovi il puntatore · tocca: click",tr.centerX(),tr.centerY()+Ui.dpf(14),tp);}
+            else{tp.setTypeface(Ui.MONO);tp.setTextSize(Ui.dpf(10.5f));tp.setColor(th.muted);
+            c.drawText(spacePad?"muovi il dito · rilascia per tornare":"trascina: ◀ ▶ lettere · ▲ ▼ righe",tr.centerX(),tr.centerY()+Ui.dpf(14),tp);}
         }else{
             float r=Ui.dpf(16);p.setColor(Theme.a(padSelect?th.warn:th.accent,50));c.drawCircle(lastX,lastY,r*1.8f,p);
             p.setColor(Theme.a(padSelect?th.warn:th.accent,140));c.drawCircle(lastX,lastY,r,p);

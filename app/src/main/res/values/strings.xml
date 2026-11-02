@@ -4,4 +4,6 @@
     <string name="subtype_it">Italiano (AmpyDeck)</string>
     <string name="subtype_en">English (AmpyDeck)</string>
     <string name="spell_name">AmpyDeck · Controllo ortografico</string>
+    <string name="mouse_name">AmpyDeck Mouse</string>
+    <string name="mouse_desc">Mostra un puntatore del mouse sullo schermo e lo muove dal touchpad della tastiera AmpyDeck: tocchi, pressioni lunghe e scorrimenti vengono eseguiti dove punta. Non legge né raccoglie il contenuto dello schermo.</string>
 </resources>

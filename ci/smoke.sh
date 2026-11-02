@@ -16,6 +16,8 @@ for t in $(seq 1 10); do
 done
 echo "default IME: $(adb shell settings get secure default_input_method)"
 adb shell settings put secure spell_checker_enabled 1
+adb shell settings put secure enabled_accessibility_services $PKG/.AmpyMouseService
+adb shell settings put secure accessibility_enabled 1
 adb shell settings put secure selected_spell_checker $PKG/.AmpySpellChecker
 adb shell settings put secure selected_spell_checker_subtype 0
 # dismiss "X isn't responding" system dialogs (slow CI emulators)
@@ -111,6 +113,20 @@ if [ -n "$crash" ]; then echo "$crash" | head -30 | while IFS= read -r l; do ech
 if [ -n "$fatal" ]; then echo "$fatal" | while IFS= read -r l; do echo "::error::FATAL $l"; done; fail=1; fi
 grep -E "AmpyDeckCrash|ANR in $PKG" ci-out/logcat.txt | head -20 | while IFS= read -r l; do echo "::error::$l"; done
 if ! alive; then echo "::error::keyboard not shown / process gone at end"; fail=1; fi
+# ---- mouse: open from the toolbar (➶ = 4th tool), move the pointer, click, exit
+p=$(pos TOOLBAR); set -- $p; bx=$1; by=$2; W=1080
+adb shell input tap $bx $by; sleep 0.5
+tw=$(( (W-2*bx)/9 )); adb shell input tap $(( 2*bx + tw*3 + tw/2 )) $by; sleep 1.2
+p=$(pos PANEL0); set -- $p; mx=$(( $1+300 )); my=$(( $2+150 ))
+adb shell "input motionevent DOWN $mx $my; input motionevent MOVE $(( mx-40 )) $(( my-30 )); input motionevent MOVE $(( mx-80 )) $(( my-60 )); input motionevent MOVE $(( mx-120 )) $(( my-90 )); input motionevent UP $(( mx-120 )) $(( my-90 ))"
+sleep 0.6; shot 10-mouse
+adb shell dumpsys window | grep -q "AmpyDeck pointer" && echo "::notice::pointer overlay on screen" || echo "::error::pointer overlay missing"
+p=$(pos PANELABC); set -- $p; adb shell input tap $(( W*15/16 )) $2; sleep 0.6
+alive || echo "::error::keyboard closed after mouse mode"
+# ---- emoji inertial scroll: fast flick, compare frames
+tap EMOJI; sleep 0.8; keys; p=$(pos PANEL0); set -- $p
+adb shell input swipe 540 $(( $2+330 )) 540 $(( $2+20 )) 70; sleep 0.15; shot 11-fling-a; sleep 0.9; shot 11-fling-b
+p=$(pos PANELABC); set -- $p; adb shell input tap 50 $2; sleep 0.5
 # swipe up from the space bar must hide the keyboard
 p=$(pos SPACE); set -- $p; x=$1; y=$2
 adb shell "input motionevent DOWN $x $y; input motionevent MOVE $x $(( y-60 )); input motionevent MOVE $x $(( y-250 )); input motionevent MOVE $x $(( y-450 )); input motionevent UP $x $(( y-450 ))"; sleep 1.2; shot 09-after-swipe-up

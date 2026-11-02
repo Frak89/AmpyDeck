@@ -7,6 +7,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.view.Gravity;
+import android.view.View;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.*;
 
@@ -46,7 +47,11 @@ public final class SettingsActivity extends Activity {
         // rebuilding while typing would destroy the test field and close the keyboard
         if(f&&list!=null&&statusKey()!=builtStatus)build();}
     private int builtStatus=-1;
-    private int statusKey(){return (AmpyDeckIME.isEnabled(this)?1:0)|(AmpyDeckIME.isCurrent(this)?2:0)|(spellOn()?4:0);}
+    private int statusKey(){return (AmpyDeckIME.isEnabled(this)?1:0)|(AmpyDeckIME.isCurrent(this)?2:0)|(spellOn()?4:0)|(mouseEnabled()?8:0);}
+    private boolean mouseEnabled(){
+        String s=Settings.Secure.getString(getContentResolver(),Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+        return s!=null&&s.contains(getPackageName()+"/");
+    }
     private boolean spellOn(){String s=Settings.Secure.getString(getContentResolver(),"selected_spell_checker");return s!=null&&s.startsWith(getPackageName()+"/");}
 
     private void build(){
@@ -102,7 +107,22 @@ public final class SettingsActivity extends Activity {
         intChoice("Intensità glitch",new String[]{"OFF","LEGGERO","MEDIO","FORTE"},new int[]{0,1,2,3},"glitch_level",2);
         toggle("Risparmio batteria animazioni (30 fps)","eco_fps",false);
 
-        section("03 / SCRITTURA");
+        section("03 / MOUSE A SCHERMO");
+        boolean mouseOn=mouseEnabled();
+        status("Servizio \"AmpyDeck Mouse\" (Accessibilità)",mouseOn,()->startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
+        item("Come si usa","Tocca 🖱 MOUSE sotto la tastiera (o ➶ nella toolbar ⧉): la tastiera diventa un touchpad. Trascina = muovi il puntatore, tocca = click, LUNGO = pressione lunga, SCORRI = scorri la pagina, ◀ ⌂ ⧉ = indietro, home, recenti.",()->{});
+        choice("Puntatore",Pointers.NAMES,Pointers.KEYS,"pointer","neon");
+        choice("Colore puntatore",Pointers.COLOR_NAMES,Pointers.COLORS,"pointer_color","accent");
+        floatChoice("Dimensione puntatore",new String[]{"75%","100%","125%","150%","200%"},new float[]{.75f,1f,1.25f,1.5f,2f},"pointer_size",1f);
+        floatChoice("Velocità puntatore",new String[]{"LENTA","NORMALE","VELOCE","MOLTO VELOCE"},new float[]{1f,1.6f,2.3f,3.2f},"mouse_speed",1.6f);
+        View prev=new View(this){@Override protected void onDraw(android.graphics.Canvas c){
+            float x=getWidth()/2f-Ui.dpf(10),y=getHeight()/2f-Ui.dpf(16);String st=pr.s("pointer","neon");
+            if("cross".equals(st)||"ring".equals(st)||"dot".equals(st))y=getHeight()/2f;
+            Pointers.draw(c,st,x,y,Ui.dpf(26)*pr.f("pointer_size",1f),Pointers.color(th,pr.s("pointer_color","accent")),th);}};
+        prev.setBackground(new Ui.NeonPanel(th,Theme.a(th.secondary,140),.4f));
+        LinearLayout.LayoutParams pl=new LinearLayout.LayoutParams(-1,Ui.dp(90));pl.topMargin=Ui.dp(5);list.addView(prev,pl);
+
+        section("04 / SCRITTURA");
         choice("Lingua dizionario",Prefs.LANG_NAMES,Prefs.LANG,"lang","iten");
         toggle("Autocorrezione (⌫ subito dopo per annullare)","autocorrect",true);
         toggle("Maiuscola automatica","auto_caps",true);
@@ -114,20 +134,20 @@ public final class SettingsActivity extends Activity {
         toggle("Vibrazione tasti","haptics",true);
         toggle("Suono tasti","sound",false);
 
-        section("04 / DIZIONARIO");
+        section("05 / DIZIONARIO");
         Dictionary d=Dictionary.get(this);
         item("Parole imparate: "+d.learntCount(),"Tieni premuto un suggerimento nella barra per rimuoverlo.",()->{});
         item("Cancella parole e abitudini imparate","Azzera dizionario personale e coppie di parole.",()->{
             Dictionary.clearLearnt(this);pr.put("dict_reset",pr.i("dict_reset",0)+1);Ui.toast(this,"Dizionario personale azzerato");build();});
 
-        section("05 / GESTI RAPIDI");
+        section("06 / GESTI RAPIDI");
         item("Barra spaziatrice","Scorri a destra/sinistra: muovi il cursore. Tieni premuto: TRACKPAD (muovi il dito, rilascia per tornare). Dal basso verso l'alto: chiudi.",()->{});
         item("⌫ Cancella","Tieni premuto: ripeti (poi parole intere). Scorri a sinistra: cancella la parola.",()->{});
         item("⇧ Maiuscole","Un tocco: maiuscola singola. Doppio tocco: BLOCCO MAIUSCOLE.",()->{});
         item("⧉ Toolbar","Tocca ⧉ nella barra: impostazioni, emoji, appunti, tema, sfondo, replay FX, cambio tastiera.",()->{});
         item("Parola sottolineata","Tocca una parola già scritta: la barra mostra le correzioni, toccane una per sostituirla.",()->{});
 
-        section("06 / DIAGNOSTICA");
+        section("07 / DIAGNOSTICA");
         String crash=CrashLog.read(this);
         if(crash==null)item("Nessun errore registrato","Se la tastiera si chiude da sola, qui compare il motivo.",()->{});
         else{
@@ -137,7 +157,7 @@ public final class SettingsActivity extends Activity {
             item("Cancella registro errori","",()->{CrashLog.clear(this);build();});
         }
 
-        section("07 / INFO");
+        section("08 / INFO");
         item("AmpyDeck 1.0 — Neon Keys","Tastiera cyberpunk della famiglia Ampy (AmpyLink, AmpyRocket). Nessun permesso di rete: tutto resta sul telefono.",()->{});
         sv.post(()->sv.scrollTo(0,scroll));
     }
