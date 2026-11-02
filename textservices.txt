@@ -1,0 +1,40 @@
+Current Text Services Manager state:
+  Users:
+  User #0
+  Spell Checkers:
+  Spell Checkers: mUpdateCount=8
+  Spell Checker #0
+    mId=com.google.android.inputmethod.latin/com.android.inputmethod.latin.spellcheck.AndroidSpellCheckerService
+    mSettingsActivityName=com.google.android.apps.inputmethod.latin.spelling.LatinSpellCheckerSettingsActivity
+    Service:
+      priority=0 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=false
+      ServiceInfo:
+        name=com.android.inputmethod.latin.spellcheck.AndroidSpellCheckerService
+        packageName=com.google.android.inputmethod.latin
+        labelRes=0x7f140c21 nonLocalizedLabel=null icon=0x0 banner=0x0
+        enabled=true exported=true directBootAware=false
+        permission=android.permission.BIND_TEXT_SERVICE
+        flags=0x0
+        ApplicationInfo:
+          name=com.google.android.apps.inputmethod.latin.LatinApp
+          packageName=com.google.android.inputmethod.latin
+          labelRes=0x7f1404bc nonLocalizedLabel=null icon=0x7f110000 banner=0x0
+          className=com.google.android.apps.inputmethod.latin.LatinApp
+          processName=com.google.android.inputmethod.latin
+          taskAffinity=com.google.android.inputmethod.latin
+          uid=10153 flags=0x20cabe45 privateFlags=0x8c881110 theme=0x7f150023
+          requiresSmallestWidthDp=0 compatibleWidthLimitDp=0 largestWidthLimitDp=0
+          sourceDir=/product/app/LatinIMEGooglePrebuilt/LatinIMEGooglePrebuilt.apk
+          resourceDirs=[/product/overlay/EmulationPixel6/EmulationPixel6Overlay.apk, /product/overlay/NavigationBarModeGestural/NavigationBarModeGesturalOverlay.apk]
+          overlayPaths=[/product/overlay/EmulationPixel6/EmulationPixel6Overlay.apk, /product/overlay/NavigationBarModeGestural/NavigationBarModeGesturalOverlay.apk]
+          seinfo=default:targetSdkVersion=35:partition=product
+          seinfoUser=:complete
+          dataDir=/data/user/0/com.google.android.inputmethod.latin
+          deviceProtectedDataDir=/data/user_de/0/com.google.android.inputmethod.latin
+          credentialProtectedDataDir=/data/user/0/com.google.android.inputmethod.latin
+          sharedLibraryFiles=[/system_ext/framework/androidx.window.extensions.jar, /system_ext/framework/androidx.window.sidecar.jar]
+          enabled=true minSdkVersion=26 targetSdkVersion=35 versionCode=163542536 targetSandboxVersion=1
+          supportsRtl=true
+          fullBackupContent=true
+          crossProfile=true
+          HiddenApiEnforcementPolicy=2
