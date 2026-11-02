@@ -67,7 +67,8 @@ grep -a FIT ci-out/keys.txt | while IFS= read -r l; do echo "::warning::$l"; don
 grep GEOM ci-out/keys.txt | tail -2 | while IFS= read -r l; do echo "::warning::$l"; done
 adb shell dumpsys window windows | grep -A3 "InputMethod" | head -20 | while IFS= read -r l; do echo "::warning::WIN $l"; done
 shot 01-open
-p=$(pos g); adb shell "input motionevent DOWN $p; sleep 0.4"; shot 01b-preview; adb shell input motionevent UP $p; sleep 0.3
+p=$(pos g); (adb shell input swipe $p $p 2500 &) ; sleep 1.0; shot 01b-preview; sleep 2
+p=$(pos e); (adb shell input swipe $p $p 2500 &) ; sleep 1.2; shot 01c-accents; sleep 2; adb shell input keyevent KEYCODE_DEL
 type ciao; tap ","; shot 02-comma
 tap SPACE; type kzqwx; shot 03-unknown
 tap B1; sleep 0.6; shot 04-pick-unknown
