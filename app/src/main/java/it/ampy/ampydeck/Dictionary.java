@@ -17,13 +17,13 @@ public final class Dictionary {
     private static Dictionary inst;private static String instLang;
 
     public volatile String[] words=new String[0],norm=new String[0];public volatile int[] freq=new int[0];
-    private HashMap<String,Integer> index=new HashMap<>();        // exact word -> idx
-    private HashMap<String,Integer> normBest=new HashMap<>();     // normalized -> best idx
+    private volatile HashMap<String,Integer> index=new HashMap<>();        // exact word -> idx
+    private volatile HashMap<String,Integer> normBest=new HashMap<>();     // normalized -> best idx
     /** User words missing from the base lists: small sorted side index (no rebuild of the big one). */
     private final TreeMap<String,String> extra=new TreeMap<>();
-    private final HashMap<String,Integer> user=new HashMap<>();         // learnt word -> count
-    private final HashMap<String,HashMap<String,Integer>> bigrams=new HashMap<>();
-    private final HashSet<String> blocked=new HashSet<>();
+    private final java.util.concurrent.ConcurrentHashMap<String,Integer> user=new java.util.concurrent.ConcurrentHashMap<>();         // learnt word -> count
+    private final java.util.concurrent.ConcurrentHashMap<String,Map<String,Integer>> bigrams=new java.util.concurrent.ConcurrentHashMap<>();
+    private final Set<String> blocked=java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final File userFile,bigramFile,blockFile;private boolean dirty;
     public final String lang;
     public volatile boolean ready;
@@ -44,7 +44,7 @@ public final class Dictionary {
         this.lang=lang;
         userFile=new File(c.getFilesDir(),"user_words.txt");bigramFile=new File(c.getFilesDir(),"bigrams.txt");
         blockFile=new File(c.getFilesDir(),"blocked_words.txt");
-        new Thread(()->{load(c);ready=true;},"ampydeck-dict").start();
+        new Thread(()->{android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);load(c);ready=true;},"ampydeck-dict").start();
     }
 
     // ------------------------------------------------------------------ loading
@@ -58,11 +58,11 @@ public final class Dictionary {
         try(BufferedReader r=reader(userFile)){String ln;while(r!=null&&(ln=r.readLine())!=null){
             String[] p=ln.split("\t");if(p.length==2)user.put(p[0],parse(p[1]));}}catch(Throwable ignored){}
         try(BufferedReader r=reader(bigramFile)){String ln;while(r!=null&&(ln=r.readLine())!=null){
-            String[] p=ln.split("\t");if(p.length==3)bigrams.computeIfAbsent(p[0],k->new HashMap<>()).put(p[1],parse(p[2]));}}catch(Throwable ignored){}
+            String[] p=ln.split("\t");if(p.length==3)bigrams.computeIfAbsent(p[0],k->new java.util.concurrent.ConcurrentHashMap<>()).put(p[1],parse(p[2]));}}catch(Throwable ignored){}
         try(BufferedReader r=reader(blockFile)){String ln;while(r!=null&&(ln=r.readLine())!=null)if(!ln.isEmpty())blocked.add(ln);}catch(Throwable ignored){}
         for(String b:blocked)m.remove(b);
         build(m);
-        synchronized(this){for(String w:user.keySet())if(!index.containsKey(w)&&!blocked.contains(w))extra.put(normalize(w),w);}
+        synchronized(extra){for(String w:user.keySet())if(!index.containsKey(w)&&!blocked.contains(w))extra.put(normalize(w),w);}
     }
     private static BufferedReader reader(File f)throws IOException{
         if(!f.exists())return null;return new BufferedReader(new InputStreamReader(new FileInputStream(f),StandardCharsets.UTF_8));
@@ -89,7 +89,7 @@ public final class Dictionary {
         for(Map.Entry<Integer,ArrayList<Integer>> e:bk.entrySet()){ArrayList<Integer> l=e.getValue();int[] a=new int[l.size()];for(int j=0;j<a.length;j++)a[j]=l.get(j);b2.put(e.getKey(),a);}
         synchronized(this){index=idx;normBest=nb;words=W;norm=N;freq=F;buckets=b2;}
     }
-    private HashMap<Integer,int[]> buckets=new HashMap<>();
+    private volatile HashMap<Integer,int[]> buckets=new HashMap<>();
     private static int bucketKey(char c,int len){return (c<<8)|Math.min(len,255);}
 
     // ------------------------------------------------------------------ text helpers
@@ -116,14 +116,14 @@ public final class Dictionary {
         return w;
     }
 
-    public synchronized boolean known(String w){
+    public boolean known(String w){
         if(w==null||w.isEmpty())return false;
         if(index.containsKey(w)||index.containsKey(w.toLowerCase(Locale.ROOT)))return true;
         if(user.containsKey(w))return true;
         String l=w.toLowerCase(Locale.ROOT);
         return index.containsKey(Character.toUpperCase(l.charAt(0))+l.substring(1));
     }
-    public synchronized boolean hasPrefix(String p){
+    public boolean hasPrefix(String p){
         String n=normalize(p);int i=lower(n);return i<norm.length&&norm[i].startsWith(n);
     }
     /** Lock-free: best frequency among words starting with this prefix (0 if none). Used for tap precision. */
@@ -139,13 +139,13 @@ public final class Dictionary {
     private int score(int i,String prev){
         String w=words[i];int s=freq[i]*10;
         Integer u=user.get(w);if(u!=null)s+=(int)(60*Math.log(1+u));
-        if(prev!=null){HashMap<String,Integer> bg=bigrams.get(prev.toLowerCase(Locale.ROOT));
+        if(prev!=null){Map<String,Integer> bg=bigrams.get(prev.toLowerCase(Locale.ROOT));
             if(bg!=null){Integer c=bg.get(w);if(c!=null)s+=(int)(160*Math.log(1+c))+80;}}
         return s;
     }
 
     /** Ranked completions for the word being typed (prefix may be empty = next word prediction). */
-    public synchronized List<String> suggest(String prefix,String prev,int n){
+    public List<String> suggest(String prefix,String prev,int n){
         ArrayList<String> out=new ArrayList<>();if(!ready)return out;
         if(prefix==null||prefix.isEmpty())return predictNext(prev,n);
         String p=normalize(prefix);int i=lower(p);
@@ -158,29 +158,29 @@ public final class Dictionary {
         }
         ArrayList<int[]> l=new ArrayList<>(pq);
         // learnt words that are not in the base lists
-        for(Map.Entry<String,String> e:extra.subMap(p,true,p+'\uffff',true).entrySet()){
+        ArrayList<String> exl=new ArrayList<>();ArrayList<Map.Entry<String,String>> exs;
+        synchronized(extra){exs=new ArrayList<>(extra.subMap(p,true,p+'\uffff',true).entrySet());}
+        for(Map.Entry<String,String> e:exs){
             Integer u=user.get(e.getValue());int sc=340+(int)(60*Math.log(1+(u==null?1:u)));
             if(e.getKey().length()==p.length())sc+=150;
-            if(prev!=null){HashMap<String,Integer> bg=bigrams.get(prev.toLowerCase(Locale.ROOT));if(bg!=null&&bg.containsKey(e.getValue()))sc+=240;}
-            l.add(new int[]{-1-extraIdx(e.getValue()),sc});
+            if(prev!=null){Map<String,Integer> bg=bigrams.get(prev.toLowerCase(Locale.ROOT));if(bg!=null&&bg.containsKey(e.getValue()))sc+=240;}
+            exl.add(e.getValue());l.add(new int[]{-exl.size(),sc});
         }
         l.sort((a,b)->Integer.compare(b[1],a[1]));
         HashSet<String> seen=new HashSet<>();
-        for(int[] e:l){String base=e[0]>=0?words[e[0]]:extraList.get(-1-e[0]);if(!seen.add(normalize(base)))continue;String w=matchCase(prefix,base);if(!out.contains(w))out.add(w);if(out.size()>=n)break;}
+        for(int[] e:l){String base=e[0]>=0?words[e[0]]:exl.get(-1-e[0]);if(!seen.add(normalize(base)))continue;String w=matchCase(prefix,base);if(!out.contains(w))out.add(w);if(out.size()>=n)break;}
         return out;
     }
 
     private static final String[] START_IT={"Ciao","Sì","Grazie","Non","Ok","Io"},START_EN={"I","The","Thanks","Hi","Ok","Yes"};
-    private final ArrayList<String> extraList=new ArrayList<>();
-    private int extraIdx(String w){int i=extraList.indexOf(w);if(i<0){extraList.add(w);i=extraList.size()-1;}return i;}
     /** Snapshot of learnt words outside the base lists (for flow typing). */
-    public synchronized List<String> extraWords(){return new ArrayList<>(extra.values());}
-    public boolean isBlocked(String w){synchronized(this){return blocked.contains(w);}}
+    public List<String> extraWords(){synchronized(extra){return new ArrayList<>(extra.values());}}
+    public boolean isBlocked(String w){return blocked.contains(w);}
 
-    public synchronized List<String> predictNext(String prev,int n){
+    public List<String> predictNext(String prev,int n){
         ArrayList<String> out=new ArrayList<>();
         if(prev!=null&&!prev.isEmpty()){
-            HashMap<String,Integer> bg=bigrams.get(prev.toLowerCase(Locale.ROOT));
+            Map<String,Integer> bg=bigrams.get(prev.toLowerCase(Locale.ROOT));
             if(bg!=null){ArrayList<Map.Entry<String,Integer>> e=new ArrayList<>(bg.entrySet());
                 e.sort((a,b)->Integer.compare(b.getValue(),a.getValue()));
                 for(Map.Entry<String,Integer> x:e){if(!blocked.contains(x.getKey()))out.add(x.getKey());if(out.size()>=n)return out;}}
@@ -219,7 +219,7 @@ public final class Dictionary {
     }
 
     /** Best replacement for an unknown typed word, or null if nothing convincing. */
-    public synchronized String correction(String typed,String prev){
+    public String correction(String typed,String prev){
         if(!ready||typed==null||typed.length()<2)return null;
         for(int i=0;i<typed.length();i++){char ch=typed.charAt(i);if(!Character.isLetter(ch)&&ch!='\'')return null;}
         String n=normalize(typed);
@@ -251,7 +251,8 @@ public final class Dictionary {
         if(best>=0&&blocked.contains(words[best]))best=-1;
         if(best>=0&&own!=null&&freq[best]<ownF+15)return null;
         String extraBest=null;
-        for(Map.Entry<String,String> e:extra.entrySet()){
+        ArrayList<Map.Entry<String,String>> exAll;synchronized(extra){exAll=new ArrayList<>(extra.entrySet());}
+        for(Map.Entry<String,String> e:exAll){
             String w=e.getKey();if(Math.abs(w.length()-n.length())>2||w.equals(n))continue;
             float d=distance(n,w,max);if(d>max)continue;Integer u=user.get(e.getValue());
             float sc=d*320-(340+(float)(60*Math.log(1+(u==null?1:u))));
@@ -272,20 +273,20 @@ public final class Dictionary {
         if(blocked.remove(key))dirty=true;
         user.merge(key,1,Integer::sum);
         if(prev!=null&&!prev.isEmpty()){
-            HashMap<String,Integer> bg=bigrams.computeIfAbsent(prev.toLowerCase(Locale.ROOT),k->new HashMap<>());
+            Map<String,Integer> bg=bigrams.computeIfAbsent(prev.toLowerCase(Locale.ROOT),k->new java.util.concurrent.ConcurrentHashMap<>());
             bg.merge(key,1,Integer::sum);if(bg.size()>40){String low=null;int lv=Integer.MAX_VALUE;
                 for(Map.Entry<String,Integer> e:bg.entrySet())if(e.getValue()<lv){lv=e.getValue();low=e.getKey();}bg.remove(low);}
         }
-        if(!index.containsKey(key))extra.put(normalize(key),key);
+        if(!index.containsKey(key))synchronized(extra){extra.put(normalize(key),key);}
         dirty=true;
     }
     public synchronized void forget(String w){
-        if(w==null)return;user.remove(w);for(HashMap<String,Integer> b:bigrams.values())b.remove(w);
-        blocked.add(w);extra.remove(normalize(w));dirty=true;
+        if(w==null)return;user.remove(w);for(Map<String,Integer> b:bigrams.values())b.remove(w);
+        blocked.add(w);synchronized(extra){extra.remove(normalize(w));}dirty=true;
     }
-    public synchronized boolean isUserWord(String w){return user.containsKey(w);}
+    public boolean isUserWord(String w){return user.containsKey(w);}
     private HashMap<String,Integer> snapshot(){HashMap<String,Integer> m=new HashMap<>(words.length*2);for(int i=0;i<words.length;i++)m.put(words[i],freq[i]);return m;}
-    public synchronized int learntCount(){return user.size();}
+    public int learntCount(){return user.size();}
     /** Wipes every learnt word / pair / blocked word; the next get() reloads clean lists. */
     public static synchronized void clearLearnt(Context c){
         if(inst!=null){synchronized(inst){inst.user.clear();inst.bigrams.clear();inst.blocked.clear();inst.dirty=false;}}
@@ -298,7 +299,7 @@ public final class Dictionary {
         try(Writer w=new OutputStreamWriter(new FileOutputStream(userFile),StandardCharsets.UTF_8)){
             for(Map.Entry<String,Integer> e:user.entrySet())w.write(e.getKey()+"\t"+e.getValue()+"\n");}catch(Throwable ignored){}
         try(Writer w=new OutputStreamWriter(new FileOutputStream(bigramFile),StandardCharsets.UTF_8)){
-            for(Map.Entry<String,HashMap<String,Integer>> e:bigrams.entrySet())for(Map.Entry<String,Integer> x:e.getValue().entrySet())
+            for(Map.Entry<String,Map<String,Integer>> e:bigrams.entrySet())for(Map.Entry<String,Integer> x:e.getValue().entrySet())
                 w.write(e.getKey()+"\t"+x.getKey()+"\t"+x.getValue()+"\n");}catch(Throwable ignored){}
         try(Writer w=new OutputStreamWriter(new FileOutputStream(blockFile),StandardCharsets.UTF_8)){
             for(String b:blocked)w.write(b+"\n");}catch(Throwable ignored){}

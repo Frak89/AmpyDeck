@@ -52,7 +52,22 @@ public final class AmpySpellChecker extends SpellCheckerService {
 
         private SuggestionsInfo ok(){return new SuggestionsInfo(SuggestionsInfo.RESULT_ATTR_IN_THE_DICTIONARY,new String[0]);}
 
+        /** Results cached per word: re-checks of the same text are instant and never compete with typing. */
+        private final android.util.LruCache<String,String[]> cache=new android.util.LruCache<>(600);
         private SuggestionsInfo check(String w,int limit,boolean elided){
+            String key=w+(elided?"'":"");String[] hit=cache.get(key);
+            if(hit!=null)return hit.length==1&&hit[0]==null?ok():typo(hit);
+            SuggestionsInfo r=checkRaw(w,limit,elided);
+            if((r.getSuggestionsAttributes()&SuggestionsInfo.RESULT_ATTR_IN_THE_DICTIONARY)!=0){
+                if(Dictionary.get(AmpySpellChecker.this).ready)cache.put(key,new String[]{null});}
+            else{String[] sg=new String[r.getSuggestionsCount()];for(int i=0;i<sg.length;i++)sg[i]=r.getSuggestionAt(i);cache.put(key,sg);}
+            return r;
+        }
+        private SuggestionsInfo typo(String[] sug){
+            int attr=SuggestionsInfo.RESULT_ATTR_LOOKS_LIKE_TYPO|(sug.length==0?0:SuggestionsInfo.RESULT_ATTR_HAS_RECOMMENDED_SUGGESTIONS);
+            return new SuggestionsInfo(attr,sug.clone());
+        }
+        private SuggestionsInfo checkRaw(String w,int limit,boolean elided){
             Dictionary d=Dictionary.get(AmpySpellChecker.this);
             if(!d.ready||w==null||w.length()<2)return ok();
             for(int i=0;i<w.length();i++)if(!Character.isLetter(w.charAt(i))&&w.charAt(i)!='\'')return ok();

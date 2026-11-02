@@ -39,7 +39,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
     private final ArrayList<String> clips=new ArrayList<>();private ClipboardManager cm;
     private boolean prefsDirty;
     private HandlerThread worker;private Handler bg;private final Handler ui=new Handler(Looper.getMainLooper());
-    private int suggestSeq=0;private volatile String cachedTyped,cachedCorr;private List<String> flowAlternates=null;
+    private volatile int suggestSeq=0;private int selStart=-1,selEnd=-1;private volatile String cachedTyped,cachedCorr;private List<String> flowAlternates=null;
 
     private final ClipboardManager.OnPrimaryClipChangedListener clipListener=()->{
         try{
@@ -57,7 +57,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
     @Override public void onCreate(){
         super.onCreate();CrashLog.install(this);pr=Prefs.get(this);lastRev=pr.rev();lastDictReset=pr.i("dict_reset",0);
         dict=Dictionary.get(this);
-        worker=new HandlerThread("ampydeck-predict");worker.start();bg=new Handler(worker.getLooper());
+        worker=new HandlerThread("ampydeck-predict",android.os.Process.THREAD_PRIORITY_BACKGROUND);worker.start();bg=new Handler(worker.getLooper());
         cm=(ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);
         if(cm!=null)cm.addPrimaryClipChangedListener(clipListener);
     }
@@ -106,6 +106,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
 
     @Override public void onStartInputView(EditorInfo info,boolean restarting){
         super.onStartInputView(info,restarting);
+        selStart=info.initialSelStart;selEnd=info.initialSelEnd;
         try{startView(info,restarting);}catch(Throwable t){CrashLog.log("startInputView",t);}
     }
     private void startView(EditorInfo info,boolean restarting){
@@ -207,6 +208,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
         if(editWord!=null&&composing.length()==0){
             final String w=editWord;final int seq=++suggestSeq;
             bg.post(CrashLog.safe("editSuggest",()->{
+                if(seq!=suggestSeq)return;
                 Dictionary d=dict;String corr=d.correction(w,null);List<String> l=d.suggest(w,null,4);
                 ArrayList<String> alt=new ArrayList<>();
                 if(corr!=null)alt.add(corr);for(String x:l)if(!x.equals(w)&&!alt.contains(x))alt.add(x);
@@ -223,6 +225,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
         final String typed=composing.toString();final String prev=prevWord();final boolean ac=autocorrect&&!noCorrectOnce;
         final int seq=++suggestSeq;
         bg.post(CrashLog.safe("suggest",()->{
+            if(seq!=suggestSeq)return;      // a newer keystroke already queued: skip stale work
             Dictionary d=dict;
             List<String> list=d.suggest(typed,prev,5);
             String corr=ac&&!typed.isEmpty()?d.correction(typed,prev):null;
@@ -276,9 +279,8 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
             CharSequence after=ic.getTextAfterCursor(1,0);
             if(i<b.length()&&(after==null||after.length()==0||!wordChar(after.charAt(0)))){
                 String w=b.substring(i);
-                android.view.inputmethod.ExtractedText et=ic.getExtractedText(new android.view.inputmethod.ExtractedTextRequest(),0);
-                if(et!=null&&et.selectionStart==et.selectionEnd){
-                    int cur=et.startOffset+et.selectionStart;ic.setComposingRegion(cur-w.length(),cur);composing.append(w);}
+                if(selStart>=0&&selStart==selEnd){
+                    int cur=selStart;ic.setComposingRegion(cur-w.length(),cur);composing.append(w);}
             }
         }
         composing.append(s);setComposing();autoSpaced=false;undoOriginal=null;
@@ -496,6 +498,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
 
     @Override public void onUpdateSelection(int oss,int ose,int nss,int nse,int cs,int ce){
         super.onUpdateSelection(oss,ose,nss,nse,cs,ce);
+        selStart=nss;selEnd=nse;
         try{selectionMoved(oss,ose,nss,nse,cs,ce);}catch(Throwable t){CrashLog.log("selection",t);}
     }
     private void selectionMoved(int oss,int ose,int nss,int nse,int cs,int ce){

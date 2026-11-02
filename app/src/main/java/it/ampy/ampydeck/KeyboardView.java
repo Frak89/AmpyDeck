@@ -98,7 +98,7 @@ public final class KeyboardView extends View {
         mouseSpeed=pr.f("mouse_speed",1.6f);
         haptics=pr.haptics();sound=pr.sound();glitch=pr.glitch();numberRow=pr.numberRow();emojiKey=pr.b("emoji_key",true);
         recents=new ArrayList<>(Arrays.asList(pr.s("emoji_recent","").split("\u0001")));recents.remove("");
-        buildRows();requestLayout();invalidate();
+        buildRows();cacheDirty=true;requestLayout();invalidate();
         removeCallbacks(idle);if(glitch>0)postDelayed(idle,2500);
     }
 
@@ -202,6 +202,7 @@ public final class KeyboardView extends View {
     }
 
     private void layoutKeys(){
+        cacheDirty=true;
         int W=getWidth();if(W==0)return;
         float sum=0;for(Layouts.Row r:rows)sum+=r.weight;
         float y=barH;float gap=Ui.dpf(3.2f);unitW=W/10f;
@@ -619,7 +620,13 @@ public final class KeyboardView extends View {
             boolean asm=asmMode!=null&&asmX!=null&&asmX.length==keys.size()&&now-asmStart<asmDur*1.05f;
             if(asmMode!=null&&!asm)asmMode=null;
             anim|=asm;
-            for(Layouts.Key k:keys){if(asm)drawAssembled(c,k,now);else drawKey(c,k,now,decoding);}
+            if(asm||decoding){for(Layouts.Key k:keys){if(asm)drawAssembled(c,k,now);else drawKey(c,k,now,decoding);}}
+            else{
+                // static key caps come from a cached bitmap: a key press only redraws the touched key
+                drawKeyCache(c,now);
+                if(downKey!=null&&(!flowing||downKey.letter()))drawKey(c,downKey,now,false);
+                if(now<glitchUntil&&glitchKey>=0&&glitchKey<keys.size())drawKey(c,keys.get(glitchKey),now,false);
+            }
             if(downKey!=null&&preview&&popItems==null&&!flowing&&!cursorMode&&!downKey.special&&!longFired)drawPreview(c,downKey);
             if(popItems!=null)drawPopup(c);
             if(swipeHide)drawHideHint(c);
@@ -629,6 +636,22 @@ public final class KeyboardView extends View {
         for(GlitchTextView.Scrambler s:sc)if(s.active())anim=true;
         if(anim)postInvalidateOnAnimation();
     }
+
+    private Bitmap keyCache;private Canvas keyCacheCanvas;private boolean cacheDirty=true,cacheMode;private String cacheSig="";
+    private String cacheSignature(){return page+"|"+shift+"|"+cursorMode+"|"+delSwipe+"|"+enterLabel+"|"+spaceLabel+"|"+getWidth()+"x"+getHeight()+"|"+keys.size();}
+    private void drawKeyCache(Canvas c,long now){
+        int w=getWidth(),h=getHeight();if(w<=0||h<=0)return;
+        String sig=cacheSignature();
+        if(keyCache==null||keyCache.getWidth()!=w||keyCache.getHeight()!=h){
+            if(keyCache!=null)keyCache.recycle();keyCache=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888);keyCacheCanvas=new Canvas(keyCache);cacheDirty=true;}
+        if(cacheDirty||!sig.equals(cacheSig)){
+            keyCache.eraseColor(0);cacheMode=true;
+            try{for(Layouts.Key k:keys)drawKey(keyCacheCanvas,k,now,false);}finally{cacheMode=false;}
+            cacheSig=sig;cacheDirty=false;
+        }
+        c.drawBitmap(keyCache,0,0,null);
+    }
+    public void invalidateKeys(){cacheDirty=true;invalidate();}
 
     private int edgeOf(Layouts.Key k){return k.code==Layouts.ENTER?th.accent:k.special?th.secondary:th.accent;}
 
@@ -674,15 +697,15 @@ public final class KeyboardView extends View {
     }
 
     private void drawKey(Canvas c,Layouts.Key k,long now,boolean decoding){
-        boolean pressed=k==downKey&&!flowing||(k.code==Layouts.SHIFT&&shift==2);
+        boolean pressed=(!cacheMode&&k==downKey&&!flowing)||(k.code==Layouts.SHIFT&&shift==2);
         boolean strong=k.code==Layouts.ENTER||(k.code==Layouts.SHIFT&&shift>0);
         int edge=edgeOf(k);
         keyBody(c,k.path,k.r,edge,pressed,strong);
-        if(flowing&&k.letter()&&k==downKey){p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(Ui.dpf(1.5f));p.setColor(th.secondary);c.drawPath(k.path,p);p.setStyle(Paint.Style.FILL);}
+        if(!cacheMode&&flowing&&k.letter()&&k==downKey){p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(Ui.dpf(1.5f));p.setColor(th.secondary);c.drawPath(k.path,p);p.setStyle(Paint.Style.FILL);}
         String label=capLabel(k);
         boolean scramble=decoding&&k.index<lockAt.length&&now<lockAt[k.index]&&!label.isEmpty();
         if(scramble&&k.code!=Layouts.SPACE)label=String.valueOf(GlitchTextView.GLYPHS.charAt(R.nextInt(GlitchTextView.GLYPHS.length())));
-        boolean gk=k.index==glitchKey&&now<glitchUntil;
+        boolean gk=!cacheMode&&k.index==glitchKey&&now<glitchUntil;
         float size;
         if(k.code==Layouts.SPACE){size=k.r.height()*.24f;tp.setTypeface(Ui.MONO_BOLD);}
         else if(k.special&&label.length()>1){size=k.r.height()*.27f;tp.setTypeface(Ui.MONO_BOLD);}
