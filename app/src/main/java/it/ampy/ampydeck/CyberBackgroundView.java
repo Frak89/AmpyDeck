@@ -34,6 +34,9 @@ public final class CyberBackgroundView extends View {
     @Override protected void onSizeChanged(int w,int h,int ow,int oh){px=null;dropY=null;sx=null;scanBmp=null;scanShader=null;baseShader=null;sunShader=null;}
 
     @Override protected void onDraw(Canvas c){
+        long t0=System.nanoTime();try{draw0(c);}finally{Perf.add(Perf.BG,System.nanoTime()-t0);}
+    }
+    private void draw0(Canvas c){
         int w=getWidth(),h=getHeight();if(w==0)return;
         long now=SystemClock.uptimeMillis();float t=now/1000f;
         // keyboards have no wallpaper below: solid theme base, then the AmpyRocket gradient

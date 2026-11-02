@@ -282,7 +282,9 @@ public final class KeyboardView extends View {
 
     // ------------------------------------------------------------------ touch
     @Override public boolean onTouchEvent(MotionEvent e){
+        long t0=System.nanoTime();
         try{return touch(e);}catch(Throwable t){CrashLog.log("touch",t);resetTouch();return true;}
+        finally{Perf.add(Perf.TOUCH,System.nanoTime()-t0);}
     }
     // inertial scrolling for the emoji / clipboard panels
     private android.widget.OverScroller fling;private android.view.VelocityTracker vt;private boolean flingStopped;
@@ -608,7 +610,9 @@ public final class KeyboardView extends View {
 
     // ------------------------------------------------------------------ drawing
     @Override protected void onDraw(Canvas c){
+        long t0=System.nanoTime();
         try{drawAll(c);}catch(Throwable t){CrashLog.log("draw",t);}
+        Perf.add(Perf.KEYS,System.nanoTime()-t0);
     }
     private void drawAll(Canvas c){
         long now=SystemClock.uptimeMillis();boolean anim=false;

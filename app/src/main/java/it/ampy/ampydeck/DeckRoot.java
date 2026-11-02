@@ -149,7 +149,9 @@ public final class DeckRoot extends FrameLayout {
 
     @Override protected void dispatchDraw(Canvas c){
         if(!entering){super.dispatchDraw(c);try{drawStrip(c);}catch(Throwable t){CrashLog.log("strip",t);}return;}
+        long t0=System.nanoTime();
         try{entryDraw(c);}catch(Throwable t){CrashLog.log("entryFx",t);entering=false;super.dispatchDraw(c);}
+        Perf.add(Perf.ENTRY,System.nanoTime()-t0);
     }
     private void entryDraw(Canvas c){
         if(!entering||getWidth()==0||getHeight()==0){super.dispatchDraw(c);return;}

@@ -142,7 +142,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
         refreshSuggestions();
     }
     @Override public void onWindowShown(){super.onWindowShown();try{if(root!=null){root.setRunning(true);root.playEntry();root.scheduleFit();}}catch(Throwable t){CrashLog.log("windowShown",t);}}
-    @Override public void onWindowHidden(){super.onWindowHidden();AmpyMouseService ms=AmpyMouseService.get();if(ms!=null)ms.hide();if(kv!=null&&kv.page()==Layouts.MOUSE)kv.setPage(Layouts.LETTERS);if(root!=null)root.setRunning(false);dict.save();}
+    @Override public void onWindowHidden(){super.onWindowHidden();Perf.dump();AmpyMouseService ms=AmpyMouseService.get();if(ms!=null)ms.hide();if(kv!=null&&kv.page()==Layouts.MOUSE)kv.setPage(Layouts.LETTERS);if(root!=null)root.setRunning(false);dict.save();}
     @Override public void onFinishInputView(boolean finishing){
         super.onFinishInputView(finishing);
         if(composing.length()>0){InputConnection ic=getCurrentInputConnection();if(ic!=null)ic.finishComposingText();composing.setLength(0);}
@@ -226,10 +226,11 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
         final int seq=++suggestSeq;
         bg.post(CrashLog.safe("suggest",()->{
             if(seq!=suggestSeq)return;      // a newer keystroke already queued: skip stale work
+            long t0=System.nanoTime();
             Dictionary d=dict;
             List<String> list=d.suggest(typed,prev,5);
             String corr=ac&&!typed.isEmpty()?d.correction(typed,prev):null;
-            cachedTyped=typed;cachedCorr=corr;
+            cachedTyped=typed;cachedCorr=corr;Perf.add(Perf.SUGGEST,System.nanoTime()-t0);
             String[] out=arrange(typed,list,corr);boolean isCorr=corr!=null;
             ui.post(CrashLog.safe("suggest-ui",()->{if(seq==suggestSeq&&kv!=null)kv.setSuggestions(out[0],out[1],out[2],isCorr);}));
         }));
