@@ -125,7 +125,7 @@ p=$(pos PANELABC); set -- $p; adb shell input tap $(( W*15/16 )) $2; sleep 0.6
 alive || echo "::error::keyboard closed after mouse mode"
 # ---- emoji inertial scroll: fast flick, compare frames
 tap EMOJI; sleep 0.8; keys; p=$(pos PANEL0); set -- $p
-adb shell input swipe 540 $(( $2+330 )) 540 $(( $2+20 )) 70; sleep 0.15; shot 11-fling-a; sleep 0.9; shot 11-fling-b
+adb shell input swipe 540 $(( $2+330 )) 540 $(( $2+60 )) 120; shot 11-fling-a; sleep 0.6; shot 11-fling-b
 p=$(pos PANELABC); set -- $p; adb shell input tap 50 $2; sleep 0.5
 # swipe up from the space bar must hide the keyboard
 p=$(pos SPACE); set -- $p; x=$1; y=$2

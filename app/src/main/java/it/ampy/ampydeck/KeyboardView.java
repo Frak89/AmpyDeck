@@ -282,6 +282,15 @@ public final class KeyboardView extends View {
     }
     // inertial scrolling for the emoji / clipboard panels
     private android.widget.OverScroller fling;private android.view.VelocityTracker vt;private boolean flingStopped;
+    private final float[] hy=new float[6];private final long[] ht=new long[6];private int hn;
+    private void recordPanel(float y){int i=hn%6;hy[i]=y;ht[i]=SystemClock.uptimeMillis();hn++;}
+    /** Fallback velocity (px/s) from the last ~120 ms of samples, for sparse touch streams. */
+    private float manualVelocity(){
+        if(hn<2)return 0;int last=(hn-1)%6;long tl=ht[last];int first=last;
+        for(int k=1;k<Math.min(hn,6);k++){int j=(hn-1-k)%6;if(tl-ht[j]>120)break;first=j;}
+        long dt=tl-ht[first];if(dt<8)return 0;float v=(hy[last]-hy[first])*1000f/dt;
+        return Math.max(-Ui.dpf(9000),Math.min(Ui.dpf(9000),v));
+    }
     private void startFling(float vy){
         float max=Math.max(0,panelContentH()-(panelBottomRowTop()-barH));if(max<=0)return;
         fling.fling(0,(int)panelScroll,0,(int)vy,0,0,0,(int)max,0,(int)Ui.dpf(36));postInvalidateOnAnimation();
@@ -289,7 +298,7 @@ public final class KeyboardView extends View {
     private boolean touch(MotionEvent e){
         int a=e.getActionMasked();
         if(vt==null)vt=android.view.VelocityTracker.obtain();
-        if(a==MotionEvent.ACTION_DOWN){vt.clear();flingStopped=!fling.isFinished();fling.forceFinished(true);}
+        if(a==MotionEvent.ACTION_DOWN){vt.clear();hn=0;flingStopped=!fling.isFinished();fling.forceFinished(true);}
         vt.addMovement(e);
         switch(a){
             case MotionEvent.ACTION_DOWN:case MotionEvent.ACTION_POINTER_DOWN:{
@@ -324,7 +333,7 @@ public final class KeyboardView extends View {
         downX=lastX=x;downY=lastY=y;
         if(y<barH){inBar=true;barPressed=barSlot(x);barDownAt=SystemClock.uptimeMillis();tap(0);
             if(barPressed>=1&&barPressed<=3&&!toolbar)postDelayed(longPress,520);invalidate();return;}
-        if(panelPage()){inPanel=true;tap(0);padAx=padAy=0;invalidate();return;}
+        if(panelPage()){inPanel=true;tap(0);padAx=padAy=0;recordPanel(y);invalidate();return;}
         Layouts.Key k=keyAt(x,y);if(k==null)return;press(k);
     }
     private Layouts.Key downKeyAtDown;private boolean swipeHide;private boolean spacePad;private int spacePadPrev;
@@ -342,7 +351,7 @@ public final class KeyboardView extends View {
         if(spacePad){padDrag(x,y,x-px,y-py);return;}
         if(inPanel&&page==Layouts.TRACKPAD){padMove(x,y,x-px,y-py);return;}
         if(inPanel&&page==Layouts.MOUSE){mouseMove(x,y,x-px,y-py);return;}
-        if(inPanel){if(!panelDragging&&Math.abs(dy)>Ui.dpf(8))panelDragging=true;
+        if(inPanel){recordPanel(y);if(!panelDragging&&Math.abs(dy)>Ui.dpf(8))panelDragging=true;
             if(panelDragging){panelScroll-=y-(downY+dyAcc);dyAcc=y-downY;clampScroll();invalidate();}return;}
         if(downKey==null)return;
         if(popItems!=null){popSel=popIndex(x);invalidate();return;}
@@ -393,7 +402,10 @@ public final class KeyboardView extends View {
         if(spacePad){spacePad=false;page=spacePadPrev;padTouch=false;padSelect=false;trail.clear();invalidate();return;}
         if(inBar){barUp(x);dyAcc=0;return;}
         if(inPanel){
-            if(panelDragging&&(page==Layouts.EMOJIS||page==Layouts.CLIP)){vt.computeCurrentVelocity(1000,Ui.dpf(9000));startFling(-vt.getYVelocity());}
+            if(panelDragging&&(page==Layouts.EMOJIS||page==Layouts.CLIP)){
+                panelScroll-=y-(downY+dyAcc);clampScroll();recordPanel(y);
+                vt.computeCurrentVelocity(1000,Ui.dpf(9000));float v=-vt.getYVelocity(),mv=-manualVelocity();
+                startFling(Math.abs(mv)>Math.abs(v)?mv:v);}
             else if(!panelDragging&&!(flingStopped&&downY<panelBottomRowTop()))panelTap(x,y);
             dyAcc=0;return;}
         if(downKey==null)return;
@@ -859,7 +871,7 @@ public final class KeyboardView extends View {
         for(int i=0;i<n;i++){
             tr.set(i*w+Ui.dpf(1.6f),bt+Ui.dpf(1.6f),(i+1)*w-Ui.dpf(1.6f),bt+h-Ui.dpf(1.6f));
             String lab;int edge=th.secondary;boolean sel=false;
-            if(i==0)lab="ABC";else if(i==n-1)lab="⌫";
+            if(i==0)lab="ABC";else if(i==n-1)lab=page==Layouts.MOUSE?"✕":"⌫";
             else if(page==Layouts.EMOJIS){lab=Layouts.EMOJI_TABS[i-1];sel=emojiTab==i-1;edge=th.accent;}
             else if(page==Layouts.TRACKPAD){lab=PAD_CELLS[i];sel=i==2&&padSelect;edge=i==2?th.accent:th.secondary;}
             else if(page==Layouts.MOUSE){lab=MOUSE_CELLS[i];sel=i==3&&mouseScroll;edge=i==1||i==2?th.accent:th.secondary;}
