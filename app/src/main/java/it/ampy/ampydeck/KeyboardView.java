@@ -94,7 +94,7 @@ public final class KeyboardView extends View {
 
     public void reload(){
         pr=Prefs.get(getContext());th=Theme.load(getContext());
-        keyStyle=pr.keyStyle();hints=pr.hints();preview=pr.popup();flowOn=pr.flow();trailOn=pr.trail();
+        keyStyle=pr.keyStyle();keyShape=pr.s("key_shape","auto");popupShape=pr.s("popup_shape","chamfer");hints=pr.hints();preview=pr.popup();flowOn=pr.flow();trailOn=pr.trail();
         mouseSpeed=pr.f("mouse_speed",1.6f);
         haptics=pr.haptics();sound=pr.sound();glitch=pr.glitch();numberRow=pr.numberRow();emojiKey=pr.b("emoji_key",true);
         recents=new ArrayList<>(Arrays.asList(pr.s("emoji_recent","").split("\u0001")));recents.remove("");
@@ -242,7 +242,10 @@ public final class KeyboardView extends View {
         b.append("K PANEL0 ").append((int)(o[0]+emojiCell()/2)).append(' ').append((int)(o[1]+barH+emojiCell()*.43f)).append('\n');
         for(String l:b.toString().split("\n"))android.util.Log.i("AmpyDeckKeys",l);
     };
-    private void shapeKey(Layouts.Key k){
+    private String keyShape="auto",popupShape="chamfer";
+    private String shape(){return "auto".equals(keyShape)?("neon".equals(keyStyle)||"outline".equals(keyStyle)?"chamfer":"rounded"):keyShape;}
+    private void shapeKey(Layouts.Key k){Shapes.path(k.path,k.r,shape());}
+    private void shapeKeyOld(Layouts.Key k){
         k.path.reset();RectF r=k.r;
         if("neon".equals(keyStyle)||"outline".equals(keyStyle)){
             float c=Math.min(Ui.dpf(7),Math.min(r.width(),r.height())/3f);
@@ -640,7 +643,9 @@ public final class KeyboardView extends View {
             case "outline":p.setColor(Theme.a(th.bg,pressed?120:40));c.drawPath(path,p);break;
             case "flat":p.setColor(Theme.a(th.panel,235));c.drawPath(path,p);break;
             default:p.setColor(Theme.a(th.panel,strong?200:165));c.drawPath(path,p);
+                c.save();c.clipPath(path);
                 p.setColor(0x08ffffff);for(float y=r.top+Ui.dpf(2);y<r.bottom;y+=Ui.dpf(3))c.drawRect(r.left+Ui.dpf(2),y,r.right-Ui.dpf(2),y+Ui.dpf(1),p);
+                c.restore();
         }
         if(strong){p.setColor(Theme.a(edge,pressed?120:55));c.drawPath(path,p);}
         if(pressed){p.setColor(Theme.a(edge,95));c.drawPath(path,p);}
@@ -648,7 +653,7 @@ public final class KeyboardView extends View {
         if(pressed){p.setStrokeWidth(Ui.dpf(5));p.setColor(Theme.a(edge,55));c.drawPath(path,p);}
         if(!"flat".equals(keyStyle)||pressed){
             p.setStrokeWidth(Ui.dpf(pressed?1.8f:1f));p.setColor(Theme.a(edge,pressed?255:"outline".equals(keyStyle)?200:120));c.drawPath(path,p);}
-        if("neon".equals(keyStyle)||"outline".equals(keyStyle)){
+        if(("neon".equals(keyStyle)||"outline".equals(keyStyle))&&"chamfer".equals(shape())){
             float m=Math.min(Ui.dpf(9),r.width()/4f);p.setStrokeWidth(Ui.dpf(2));
             float cut=Math.min(Ui.dpf(7),Math.min(r.width(),r.height())/3f);
             p.setColor(edge);c.drawLine(r.left+cut,r.top,r.left+cut+m,r.top,p);
@@ -714,14 +719,15 @@ public final class KeyboardView extends View {
         path.lineTo(r.right-cut,r.bottom);path.lineTo(r.left,r.bottom);path.lineTo(r.left,r.top+cut);path.close();
     }
     private void bubble(Canvas c,RectF r,int edge){
-        chamfer(tmp,r,Ui.dpf(8));
+        Shapes.path(tmp,r,popupShape);
         p.setStyle(Paint.Style.FILL);p.setShader(new LinearGradient(0,r.top,0,r.bottom,Theme.a(th.panel2,250),Theme.a(th.panel,250),Shader.TileMode.CLAMP));
         c.drawPath(tmp,p);p.setShader(null);
-        p.setColor(0x0cffffff);for(float y=r.top+Ui.dpf(2);y<r.bottom;y+=Ui.dpf(3))c.drawRect(r.left,y,r.right,y+Ui.dpf(1),p);
+        c.save();c.clipPath(tmp);p.setColor(0x0cffffff);for(float y=r.top+Ui.dpf(2);y<r.bottom;y+=Ui.dpf(3))c.drawRect(r.left,y,r.right,y+Ui.dpf(1),p);c.restore();
         p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(Ui.dpf(5));p.setColor(Theme.a(edge,50));c.drawPath(tmp,p);
         p.setStrokeWidth(Ui.dpf(1.5f));p.setColor(edge);c.drawPath(tmp,p);
-        p.setStrokeWidth(Ui.dpf(2.4f));p.setColor(th.secondary);float m=Ui.dpf(10);
-        c.drawLine(r.right,r.top,r.right,r.top+m,p);c.drawLine(r.left,r.bottom,r.left,r.bottom-m,p);p.setStyle(Paint.Style.FILL);
+        if("chamfer".equals(popupShape)){p.setStrokeWidth(Ui.dpf(2.4f));p.setColor(th.secondary);float m=Ui.dpf(10);
+            c.drawLine(r.right,r.top,r.right,r.top+m,p);c.drawLine(r.left,r.bottom,r.left,r.bottom-m,p);}
+        p.setStyle(Paint.Style.FILL);
     }
     private void drawPreview(Canvas c,Layouts.Key k){
         float w=k.r.width()*1.25f,h=k.r.height()*1.2f;
@@ -730,6 +736,7 @@ public final class KeyboardView extends View {
         tr.set(left,top,left+w,top+h);bubble(c,tr,th.accent);
         String l=capLabel(k);tp.setTypeface(Ui.MONO_BOLD);tp.setTextAlign(Paint.Align.CENTER);tp.setTextSize(h*.5f);
         Paint.FontMetrics fm=tp.getFontMetrics();float y=tr.centerY()-(fm.ascent+fm.descent)/2f;
+        if("drop".equals(popupShape))y-=Math.min(h*.09f,Ui.dpf(6));
         if(glitch>0){tp.setColor(Theme.a(th.secondary,140));c.drawText(l,tr.centerX()-Ui.dpf(1.5f),y,tp);
             tp.setColor(Theme.a(th.accent,140));c.drawText(l,tr.centerX()+Ui.dpf(1.5f),y,tp);}
         tp.setColor(th.fg);c.drawText(l,tr.centerX(),y,tp);
@@ -739,7 +746,7 @@ public final class KeyboardView extends View {
         tp.setTypeface(Ui.MONO_BOLD);tp.setTextAlign(Paint.Align.CENTER);
         for(int i=0;i<popItems.length;i++){
             float l=popRect.left+i*popCell;tr.set(l+Ui.dpf(3),popRect.top+Ui.dpf(4),l+popCell-Ui.dpf(3),popRect.bottom-Ui.dpf(4));
-            if(i==popSel){chamfer(tmp,tr,Ui.dpf(5));p.setColor(Theme.a(th.accent,200));c.drawPath(tmp,p);}
+            if(i==popSel){Shapes.path(tmp,tr,"drop".equals(popupShape)?"rounded":popupShape);p.setColor(Theme.a(th.accent,200));c.drawPath(tmp,p);}
             String s=popItems[i];tp.setTextSize(Math.min(popRect.height()*.42f,popCell*(s.length()>1?.4f:.7f)));
             Paint.FontMetrics fm=tp.getFontMetrics();
             tp.setColor(i==popSel?th.bg:th.fg);c.drawText(s,tr.centerX(),tr.centerY()-(fm.ascent+fm.descent)/2f,tp);
@@ -876,7 +883,7 @@ public final class KeyboardView extends View {
             else if(page==Layouts.TRACKPAD){lab=PAD_CELLS[i];sel=i==2&&padSelect;edge=i==2?th.accent:th.secondary;}
             else if(page==Layouts.MOUSE){lab=MOUSE_CELLS[i];sel=i==3&&mouseScroll;edge=i==1||i==2?th.accent:th.secondary;}
             else lab="✕ SVUOTA";
-            chamfer(tmp,tr,Math.min(Ui.dpf(6),tr.width()/4));
+            Shapes.path(tmp,tr,shape());
             keyBody(c,tmp,tr,edge,false,sel);
             tp.setTextAlign(Paint.Align.CENTER);
             boolean emoji=page==Layouts.EMOJIS&&i>0&&i<n-1;

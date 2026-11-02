@@ -4,9 +4,9 @@ import android.content.Context;
 
 /** Neon palettes shared with AmpyRAW Cyberdark (same keys, same colours). */
 public final class Theme {
-    public static final String[] KEYS={"cyberpunk","vista","futuristic","retro","modern","bloodmoon"};
+    public static final String[] KEYS={"cyberpunk","vista","futuristic","retro","modern","bloodmoon","custom"};
     public static final String[] NAMES={"CYBERPUNK / NEON","WINDOWS VISTA / AERO","FUTURISTIC / GLASS",
-        "RETRO / ANALOG","MODERNO / MINIMAL","BLOOD MOON / RED OPS"};
+        "RETRO / ANALOG","MODERNO / MINIMAL","BLOOD MOON / RED OPS","PERSONALIZZATO (16 bit)"};
 
     public final String key,label;
     public final int bg,panel,panel2,fg,muted,accent,secondary,warn,bad,top,bottom,border,grid,round;
@@ -48,7 +48,28 @@ public final class Theme {
             0xff101c2d,0xff07101d,0xff214557,0x1237dcee,6,true,false);
     }
 
-    public static Theme load(Context c){return of(Prefs.get(c).theme());}
+    public static Theme load(Context c){
+        Prefs pr=Prefs.get(c);String id=pr.theme();
+        if(!"custom".equals(id))return of(id);
+        Theme d=of("cyberpunk");
+        return custom(pr.i("c_bg",d.bg),pr.i("c_panel",d.panel),pr.i("c_fg",d.fg),pr.i("c_accent",d.accent),pr.i("c_secondary",d.secondary));
+    }
+
+    /** User palette (each colour picked from the 16-bit RGB565 palette); the rest is derived. */
+    public static Theme custom(int bg,int panel,int fg,int accent,int secondary){
+        bg|=0xff000000;panel|=0xff000000;fg|=0xff000000;accent|=0xff000000;secondary|=0xff000000;
+        int panel2=mix(panel,fg,.10f),muted=mix(fg,bg,.42f),top=mix(bg,panel,.45f),bottom=mix(bg,0xff000000,.45f),border=mix(panel,accent,.35f);
+        return new Theme("custom","PERSONALIZZATO",bg,panel,panel2,fg,muted,accent,secondary,0xffffd16a,0xffff6177,top,bottom,border,
+            a(accent,0x16),8,true,false);
+    }
+    public static int mix(int a,int b,float t){
+        int ar=(a>>16)&255,ag=(a>>8)&255,ab=a&255,br=(b>>16)&255,bg=(b>>8)&255,bb=b&255;
+        return 0xff000000|((int)(ar+(br-ar)*t)<<16)|((int)(ag+(bg-ag)*t)<<8)|(int)(ab+(bb-ab)*t);
+    }
+    /** RGB565 helpers: the 16-bit palette (5 bits red, 6 green, 5 blue). */
+    public static int to565(int c){return (((c>>16)&255)>>3)<<11|(((c>>8)&255)>>2)<<5|((c&255)>>3);}
+    public static int from565(int v){int r=(v>>11)&31,g=(v>>5)&63,b=v&31;return 0xff000000|((r<<3)|(r>>2))<<16|((g<<2)|(g>>4))<<8|((b<<3)|(b>>2));}
+    public static int q565(int c){return from565(to565(c));}
 
     public int index(){for(int i=0;i<KEYS.length;i++)if(KEYS[i].equals(key))return i;return 0;}
 

@@ -95,6 +95,17 @@ public final class SettingsActivity extends Activity {
         toggle("Scanlines CRT","scanlines",true);
         intChoice("Intensità sfondo tema",new String[]{"20%","40%","60%","80%","100%"},new int[]{20,40,60,80,100},"bg_dim",60);
         choice("Stile tasti",Prefs.KEY_STYLE_NAMES,Prefs.KEY_STYLE,"key_style","neon");
+        choice("Forma tasti",Shapes.KEY_NAMES,Shapes.KEY,"key_shape","auto");
+        choice("Forma tasti in digitazione (anteprima e accenti)",Shapes.POPUP_NAMES,Shapes.POPUP,"popup_shape","chamfer");
+        keyPreview();
+
+        section("01b / COLORI PERSONALIZZATI · TAVOLOZZA 16 BIT");
+        item("Come funziona","Scegli ogni colore dalla tavolozza RGB565 (65.536 colori). Il tema passa a PERSONALIZZATO.",()->{});
+        colorRow("Sfondo","c_bg",th.bg);
+        colorRow("Tasti","c_panel",th.panel);
+        colorRow("Testo dei tasti","c_fg",th.fg);
+        colorRow("Colore 1 · bordi, invio, testa della scia","c_accent",th.accent);
+        colorRow("Colore 2 · tasti speciali, simboli, coda della scia","c_secondary",th.secondary);
         floatChoice("Altezza tastiera",new String[]{"85%","92%","100%","108%","116%","125%"},new float[]{.85f,.92f,1f,1.08f,1.16f,1.25f},"kb_height",1f);
         toggle("Riga dei numeri","number_row",true);
         toggle("Simboli sui tasti (pressione lunga)","hints",true);
@@ -160,6 +171,54 @@ public final class SettingsActivity extends Activity {
         section("08 / INFO");
         item("AmpyDeck 1.0 — Neon Keys","Tastiera cyberpunk della famiglia Ampy (AmpyLink, AmpyRocket). Nessun permesso di rete: tutto resta sul telefono.",()->{});
         sv.post(()->sv.scrollTo(0,scroll));
+    }
+
+    /** One custom colour slot: swatch + hex; picking one switches the theme to the user palette. */
+    private void colorRow(String title,String key,int current){
+        int col=pr.i(key,current);
+        LinearLayout r=row(title,null,String.format(java.util.Locale.ROOT,"■ #%06X",col&0xffffff),col|0xff000000,()->
+            ColorPicker565.show(this,th,title,col,picked->{
+                if(!"custom".equals(pr.theme())){   // start the custom palette from the current theme
+                    Theme cur=th;pr.put("c_bg",cur.bg);pr.put("c_panel",cur.panel);pr.put("c_fg",cur.fg);pr.put("c_accent",cur.accent);pr.put("c_secondary",cur.secondary);
+                    pr.put("theme","custom");}
+                pr.put(key,picked);build();}));
+    }
+    /** Live sample of the current colours and shapes (keys, a key preview bubble and the flow trail). */
+    private void keyPreview(){
+        View v=new View(this){
+            final android.graphics.Paint p=new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+            final android.graphics.Path path=new android.graphics.Path();
+            @Override protected void onDraw(android.graphics.Canvas c){
+                String style=pr.keyStyle(),ks=pr.s("key_shape","auto"),ps=pr.s("popup_shape","chamfer");
+                if("auto".equals(ks))ks="neon".equals(style)||"outline".equals(style)?"chamfer":"rounded";
+                float W=getWidth(),H=getHeight();p.setStyle(android.graphics.Paint.Style.FILL);p.setColor(th.bg);c.drawRect(0,0,W,H,p);
+                String[] lab={"A","M","P","Y","⏎"};float kw=(W-Ui.dpf(24))/5f,kh=H*.42f,top=H*.5f;
+                for(int i=0;i<5;i++){
+                    android.graphics.RectF r=new android.graphics.RectF(Ui.dpf(12)+i*kw+Ui.dpf(3),top,Ui.dpf(12)+(i+1)*kw-Ui.dpf(3),top+kh);
+                    Shapes.path(path,r,ks);int edge=i==4?th.accent:th.accent;
+                    p.setStyle(android.graphics.Paint.Style.FILL);p.setColor(i==4?Theme.a(th.accent,70):Theme.a(th.panel,"flat".equals(style)?235:190));c.drawPath(path,p);
+                    p.setStyle(android.graphics.Paint.Style.STROKE);p.setStrokeWidth(Ui.dpf(1.2f));p.setColor(Theme.a(edge,170));c.drawPath(path,p);
+                    p.setStyle(android.graphics.Paint.Style.FILL);p.setTypeface(Ui.MONO_BOLD);p.setTextAlign(android.graphics.Paint.Align.CENTER);
+                    p.setTextSize(kh*.42f);p.setColor(i==4?th.accent:th.fg);c.drawText(lab[i],r.centerX(),r.centerY()+kh*.15f,p);
+                    if(i==1){   // the bubble that appears while typing
+                        android.graphics.RectF b=new android.graphics.RectF(r.centerX()-kw*.62f,Ui.dpf(4),r.centerX()+kw*.62f,top-Ui.dpf(4));
+                        Shapes.path(path,b,ps);p.setColor(th.panel2);c.drawPath(path,p);
+                        p.setStyle(android.graphics.Paint.Style.STROKE);p.setStrokeWidth(Ui.dpf(1.6f));p.setColor(th.accent);c.drawPath(path,p);
+                        p.setStyle(android.graphics.Paint.Style.FILL);p.setColor(th.fg);p.setTextSize(b.height()*.45f);
+                        c.drawText("M",b.centerX(),b.centerY()+b.height()*.12f-("drop".equals(ps)?b.height()*.06f:0),p);
+                    }
+                }
+                // flow trail sample: colour 1 at the head, colour 2 at the tail
+                p.setStyle(android.graphics.Paint.Style.STROKE);p.setStrokeCap(android.graphics.Paint.Cap.ROUND);
+                float x0=W*.55f,x1=W*.95f;int n=24;
+                for(int i=1;i<=n;i++){float t0=(i-1f)/n,t1=i/(float)n;
+                    p.setColor(Theme.mix(th.secondary,th.accent,t1));p.setStrokeWidth(Ui.dpf(1)+Ui.dpf(6)*t1);
+                    float ya=H*.22f+(float)Math.sin(t0*6)*H*.08f,yb=H*.22f+(float)Math.sin(t1*6)*H*.08f;
+                    c.drawLine(x0+(x1-x0)*t0,ya,x0+(x1-x0)*t1,yb,p);}
+                p.setStrokeCap(android.graphics.Paint.Cap.BUTT);
+            }};
+        v.setBackground(new Ui.NeonPanel(th,Theme.a(th.secondary,140),.4f));
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,Ui.dp(120));lp.topMargin=Ui.dp(6);list.addView(v,lp);
     }
 
     // --------------------------------------------------------- rows (same look as AmpyRocket)
