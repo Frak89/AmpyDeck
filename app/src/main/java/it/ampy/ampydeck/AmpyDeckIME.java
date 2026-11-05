@@ -528,6 +528,10 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
     @Override public void onUpdateSelection(int oss,int ose,int nss,int nse,int cs,int ce){
         super.onUpdateSelection(oss,ose,nss,nse,cs,ce);
         selStart=nss;selEnd=nse;
+        int own=tracker.ours(nss,nse);
+        boolean quiet=SystemClock.uptimeMillis()-lastSelfEdit>600;
+        if(own==1){if(quiet)tracker.anchor(nss);return;}          // our own edit landing (possibly late): nothing to do
+        if(own==-1&&quiet&&nss==nse&&composing.length()==0)tracker.anchor(nss);
         try{selectionMoved(oss,ose,nss,nse,cs,ce);}catch(Throwable t){CrashLog.log("selection",t);}
     }
     private void selectionMoved(int oss,int ose,int nss,int nse,int cs,int ce){
