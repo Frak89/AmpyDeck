@@ -18,6 +18,8 @@ public final class CyberBackgroundView extends View {
     private float[] sx,sy,sz;               // stars
     private Bitmap scanBmp;
     private float pulse=0;
+    /** Set by the keyboard on every touch: until then the animation runs at reduced rate. */
+    public static volatile long quietUntil;
     // shaders/paints are cached: no per-frame allocations (avoids GC pauses = keyboard stutter)
     private Shader baseShader,sunShader,scanShader,glowShader;private int baseH,sunKey,glowY=-1;private final Paint sp=new Paint();private final char[] one=new char[1];                 // energy pulse (e.g. on unlock / page change)
 
@@ -62,7 +64,9 @@ public final class CyberBackgroundView extends View {
             p.setStyle(Paint.Style.FILL);pulse-=.035f;
         }
         if(running&&!"plain".equals(mode)||pulse>0){
-            if(eco){long d=now-last;last=now;postInvalidateDelayed(Math.max(0,33-d));}
+            // while you type the backdrop drops to ~15 fps so every frame budget goes to the keys
+            if(now<quietUntil){long d=now-last;last=now;postInvalidateDelayed(Math.max(0,66-d));}
+            else if(eco){long d=now-last;last=now;postInvalidateDelayed(Math.max(0,33-d));}
             else postInvalidateOnAnimation();
         }else if(scan&&running){postInvalidateDelayed(120);}
     }

@@ -305,6 +305,7 @@ public final class KeyboardView extends View {
     private boolean touch(MotionEvent e){
         int a=e.getActionMasked();
         if(vt==null)vt=android.view.VelocityTracker.obtain();
+        if(a==MotionEvent.ACTION_DOWN||a==MotionEvent.ACTION_POINTER_DOWN)CyberBackgroundView.quietUntil=SystemClock.uptimeMillis()+1500;
         if(a==MotionEvent.ACTION_DOWN){vt.clear();hn=0;flingStopped=!fling.isFinished();fling.forceFinished(true);}
         vt.addMovement(e);
         switch(a){
@@ -644,9 +645,23 @@ public final class KeyboardView extends View {
 
     private Bitmap keyCache;private Canvas keyCacheCanvas;private boolean cacheDirty=true,cacheMode;private String cacheSig="";
     private String cacheSignature(){return page+"|"+shift+"|"+cursorMode+"|"+delSwipe+"|"+enterLabel+"|"+spaceLabel+"|"+getWidth()+"x"+getHeight()+"|"+keys.size();}
+    /** GPU display lists of the static key caps, one per state (lower / upper / caps lock …), Android 10+. */
+    private final LinkedHashMap<String,Object> nodes=new LinkedHashMap<String,Object>(4,.75f,true){
+        @Override protected boolean removeEldestEntry(Map.Entry<String,Object> e){return size()>4;}};
     private void drawKeyCache(Canvas c,long now){
         int w=getWidth(),h=getHeight();if(w<=0||h<=0)return;
         String sig=cacheSignature();
+        if(android.os.Build.VERSION.SDK_INT>=29&&c.isHardwareAccelerated()){
+            if(cacheDirty){nodes.clear();cacheDirty=false;}
+            android.graphics.RenderNode node=(android.graphics.RenderNode)nodes.get(sig);
+            if(node==null||!node.hasDisplayList()){
+                node=new android.graphics.RenderNode("ampydeck-keys");node.setPosition(0,0,w,h);
+                android.graphics.RecordingCanvas rc=node.beginRecording(w,h);cacheMode=true;
+                try{for(Layouts.Key k:keys)drawKey(rc,k,now,false);}finally{cacheMode=false;node.endRecording();}
+                nodes.put(sig,node);
+            }
+            c.drawRenderNode(node);return;
+        }
         if(keyCache==null||keyCache.getWidth()!=w||keyCache.getHeight()!=h){
             if(keyCache!=null)keyCache.recycle();keyCache=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888);keyCacheCanvas=new Canvas(keyCache);cacheDirty=true;}
         if(cacheDirty||!sig.equals(cacheSig)){

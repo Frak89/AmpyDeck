@@ -55,7 +55,7 @@ public final class AmpyDeckIME extends InputMethodService implements KeyboardVie
     };
 
     @Override public void onCreate(){
-        super.onCreate();CrashLog.install(this);pr=Prefs.get(this);lastRev=pr.rev();lastDictReset=pr.i("dict_reset",0);
+        super.onCreate();CrashLog.install(this);Perf.init(this);pr=Prefs.get(this);lastRev=pr.rev();lastDictReset=pr.i("dict_reset",0);
         dict=Dictionary.get(this);
         worker=new HandlerThread("ampydeck-predict",android.os.Process.THREAD_PRIORITY_BACKGROUND);worker.start();bg=new Handler(worker.getLooper());
         cm=(ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);

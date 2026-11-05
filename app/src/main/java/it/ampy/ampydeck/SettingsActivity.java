@@ -159,6 +159,10 @@ public final class SettingsActivity extends Activity {
         item("Parola sottolineata","Tocca una parola già scritta: la barra mostra le correzioni, toccane una per sostituirla.",()->{});
 
         section("07 / DIAGNOSTICA");
+        String perf=Perf.read(this);
+        item("Prestazioni ultima sessione"+(perf==null?"":" — tocca per copiare"),perf==null?"Scrivi qualcosa e chiudi la tastiera: qui compaiono i tempi misurati.":perf,()->{
+            if(perf==null)return;android.content.ClipboardManager cm=(android.content.ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);
+            if(cm!=null)cm.setPrimaryClip(android.content.ClipData.newPlainText("AmpyDeck perf",perf));Ui.toast(this,"Copiato");});
         String crash=CrashLog.read(this);
         if(crash==null)item("Nessun errore registrato","Se la tastiera si chiude da sola, qui compare il motivo.",()->{});
         else{
